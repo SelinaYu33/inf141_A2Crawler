@@ -9,6 +9,7 @@ import time
 
 class Worker(Thread):
     def __init__(self, worker_id, config, frontier):
+        self.worker_id = worker_id
         self.logger = get_logger(f"Worker-{worker_id}", "Worker")
         self.config = config
         self.frontier = frontier
@@ -21,14 +22,21 @@ class Worker(Thread):
         while True:
             tbd_url = self.frontier.get_tbd_url()
             if not tbd_url:
-                self.logger.info("Frontier is empty. Stopping Crawler.")
-                break
-            resp = download(tbd_url, self.config, self.logger)
-            self.logger.info(
-                f"Downloaded {tbd_url}, status <{resp.status}>, "
-                f"using cache {self.config.cache_server}.")
-            scraped_urls = scraper.scraper(tbd_url, resp)
-            for scraped_url in scraped_urls:
-                self.frontier.add_url(scraped_url)
-            self.frontier.mark_url_complete(tbd_url)
-            time.sleep(self.config.time_delay)
+                self.logger.info(f"Worker-{self.worker_id}: No URLs available. Waiting...")
+                time.sleep(self.config.time_delay)
+                continue
+                
+            try:
+                resp = download(tbd_url, self.config, self.logger)
+                self.logger.info(
+                    f"Worker-{self.worker_id} downloaded {tbd_url}, "
+                    f"status <{resp.status}>, using cache {self.config.cache_server}.")
+                    
+                scraped_urls = scraper.scraper(tbd_url, resp)
+                for scraped_url in scraped_urls:
+                    self.frontier.add_url(scraped_url)
+                    
+                self.frontier.mark_url_complete(tbd_url)
+                
+            except Exception as e:
+                self.logger.error(f"Worker-{self.worker_id} error processing {tbd_url}: {str(e)}")
