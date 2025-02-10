@@ -22,12 +22,20 @@ class Worker(Thread):
         while True:
             tbd_url = self.frontier.get_tbd_url()
             if not tbd_url:
+                # Check if all workers are waiting and no URLs are available
                 self.logger.info(f"Worker-{self.worker_id}: No URLs available. Waiting...")
                 time.sleep(self.config.time_delay)
+                # Try again instead of continuing
                 continue
                 
             try:
                 resp = download(tbd_url, self.config, self.logger)
+                if resp.status != 200:
+                    self.logger.error(
+                        f"Worker-{self.worker_id} failed to download {tbd_url}, "
+                        f"status <{resp.status}>")
+                    continue
+                    
                 self.logger.info(
                     f"Worker-{self.worker_id} downloaded {tbd_url}, "
                     f"status <{resp.status}>, using cache {self.config.cache_server}.")
@@ -40,3 +48,4 @@ class Worker(Thread):
                 
             except Exception as e:
                 self.logger.error(f"Worker-{self.worker_id} error processing {tbd_url}: {str(e)}")
+                # Don't mark URL as complete if there was an error

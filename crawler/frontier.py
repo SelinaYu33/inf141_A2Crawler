@@ -11,7 +11,9 @@ class Frontier(object):
     def __init__(self, config, restart):
         self.logger = get_logger("FRONTIER")
         self.config = config
-        self.to_be_downloaded = list()
+        
+        # Remove unused list since we're using domain_queues
+        # self.to_be_downloaded = list()
         
         # Add thread-safe lock
         self._lock = RLock()
@@ -21,29 +23,25 @@ class Frontier(object):
         self.domain_queues = defaultdict(list)
         
         if not os.path.exists(self.config.save_file) and not restart:
-            # Save file does not exist, but request to load save.
             self.logger.info(
                 f"Did not find save file {self.config.save_file}, "
                 f"starting from seed.")
         elif os.path.exists(self.config.save_file) and restart:
-            # Save file does exists, but request to start from seed.
             self.logger.info(
                 f"Found save file {self.config.save_file}, deleting it.")
             os.remove(self.config.save_file)
-        # Load existing save file, or create one if it does not exist.
+            
         self.save = shelve.open(self.config.save_file)
         if restart:
             for url in self.config.seed_urls:
                 self.add_url(url)
         else:
-            # Set the frontier state with contents of save file.
             self._parse_save_file()
             if not self.save:
                 for url in self.config.seed_urls:
                     self.add_url(url)
 
     def _parse_save_file(self):
-        ''' This function can be overridden for alternate saving techniques. '''
         total_count = len(self.save)
         tbd_count = 0
         with self._lock:
@@ -61,23 +59,30 @@ class Frontier(object):
         with self._lock:
             current_time = time.time()
             
-            # 检查所有域名队列
-            for domain, urls in self.domain_queues.items():
+            # Check all domain queues
+            for domain, urls in list(self.domain_queues.items()):  # Create a copy of items
                 if not urls:
                     continue
                     
-                # 检查是否满足politeness要求
+                # Check if politeness requirement is met
                 last_access = self.domain_last_access[domain]
                 if current_time - last_access >= self.config.time_delay:
                     url = urls.pop(0)
                     self.domain_last_access[domain] = current_time
                     return url
-                    
+            
+            # If all domains are recently accessed, return None
             return None
 
     def add_url(self, url):
         """Thread-safe method to add URL"""
+        if not url:
+            return
+            
         url = normalize(url)
+        if not is_valid(url):
+            return
+            
         with self._lock:
             urlhash = get_urlhash(url)
             if urlhash not in self.save:
@@ -88,12 +93,18 @@ class Frontier(object):
     
     def mark_url_complete(self, url):
         """Thread-safe method to mark URL as completed"""
+        if not url:
+            return
+            
         with self._lock:
             urlhash = get_urlhash(url)
             if urlhash not in self.save:
-                # This should not happen.
                 self.logger.error(
                     f"Completed url {url}, but have not seen it before.")
+                return
 
             self.save[urlhash] = (url, True)
             self.save.sync()
+
+    def __del__(self):
+        self.save.close()
