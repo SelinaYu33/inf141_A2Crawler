@@ -1,102 +1,117 @@
 import re
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
-import hashlib
 from collections import defaultdict
-import hashlib
+import urllib.robotparser
+import math
 
-# Global variables to store analytics
-word_counts = defaultdict(int)  # For tracking word frequencies
-page_lengths = {}  # For tracking page lengths
-subdomains = defaultdict(int)  # For tracking subdomains
-unique_urls = set()  # For tracking unique URLs
-page_checksums = set()  # For duplicate detection
+# Analytics tracking
+word_frequencies = defaultdict(int)  # Track word frequencies
+page_word_counts = {}  # Track page lengths
+subdomain_counts = defaultdict(int)  # Track subdomains
+unique_page_count = set()  # Track unique URLs
+
+# Trap detection
+url_patterns = defaultdict(int)  # Track URL patterns
+content_fingerprints = []  # Store document fingerprints
+robots_cache = {}  # Cache for robots.txt parsers
+visited_urls = set()  # Track already visited URLs
 
 def scraper(url, resp):
     """
-    Scrapes a webpage and returns a list of valid URLs found on the page.
-    Also processes page content for analytics.
+    Extracts and returns valid links from a webpage while analyzing content.
+    Args:
+        url: The URL being scraped
+        resp: Response object containing page content
+    Returns:
+        List of valid URLs found on the page
     """
+    # Skip if already visited
+    if url in visited_urls:
+        return []
+    visited_urls.add(url)
+    
+    if not is_allowed_by_robots(url):
+        return []
+        
     links = extract_next_links(url, resp)
     return [link for link in links if is_valid(link)]
 
 def extract_next_links(url, resp):
     """
-    Extracts links from the response and processes page content.
-    Returns a list of normalized URLs.
+    Processes page content and extracts links.
     """
     if not resp.raw_response or resp.status != 200:
         return []
     
     try:
-        content = resp.raw_response.content.decode('utf-8')
+        # Parse with BeautifulSoup for better HTML handling
+        soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
+        
+        # Remove script and style elements
+        for element in soup(['script', 'style', 'meta', 'link']):
+            element.decompose()
+            
+        # Extract text content
+        text = soup.get_text()
+        
+        # Check for traps and similar content
+        if is_trap(url) or is_similar_content(text):
+            return []
         
         # Process page content for analytics
-        process_page_content(url, content)
+        process_content(url, text)
         
-        # Extract and normalize links using regex
+        # Extract links
         links = []
-        href_pattern = re.compile(r'href=[\'"]?([^\'" >]+)')
-        for match in href_pattern.finditer(content):
-            href = match.group(1)
-            if href:
-                # Convert relative URLs to absolute URLs
+        for a_tag in soup.find_all('a', href=True):
+            href = a_tag['href'].strip()
+            if href and not href.startswith(('javascript:', 'mailto:', 'tel:')):
+                # Convert relative URLs to absolute
                 absolute_url = urljoin(url, href)
-                # Remove fragments
-                defragmented_url = absolute_url.split('#')[0]
-                links.append(defragmented_url)
+                # Remove fragments and query parameters
+                clean_url = absolute_url.split('#')[0].split('?')[0]
+                links.append(clean_url)
         
         return links
-    
+        
     except Exception as e:
         print(f"Error processing {url}: {e}")
         return []
 
-def process_page_content(url, content):
+def process_content(url, text):
     """
-    Processes page content for analytics:
-    - Word count
-    - Subdomain tracking
-    - Duplicate detection
+    Analyzes page content for statistics tracking.
     """
-    # Remove HTML tags
-    text = re.sub(r'<[^>]+>', ' ', content)
-    # Remove scripts and style content
-    text = re.sub(r'(?is)<script[^>]*>.*?</script>', ' ', text)
-    text = re.sub(r'(?is)<style[^>]*>.*?</style>', ' ', text)
-    # Remove special characters and extra whitespace
-    text = re.sub(r'[^\w\s]', ' ', text)
+    # Clean and normalize text
     text = ' '.join(text.split())
     
-    # Calculate checksum for duplicate detection
-    content_hash = hashlib.md5(text.encode()).hexdigest()
-    if content_hash in page_checksums:
-        return  # Skip duplicate content
-    page_checksums.add(content_hash)
+    # Skip if page has too little content
+    if len(text) < 50:
+        return
     
     # Process words
     words = text.lower().split()
     
-    # Update word counts (excluding stopwords)
+    # Update word frequencies (excluding stopwords)
     for word in words:
-        if not is_stopword(word):
-            word_counts[word] += 1
+        if len(word) > 2 and not is_stopword(word):
+            word_frequencies[word] += 1
     
-    # Update page length
-    page_lengths[url] = len(words)
+    # Track page length
+    page_word_counts[url] = len(words)
     
     # Track subdomains for ics.uci.edu
     parsed_url = urlparse(url)
     if 'ics.uci.edu' in parsed_url.netloc:
-        subdomains[parsed_url.netloc] += 1
+        subdomain_counts[parsed_url.netloc] += 1
     
     # Track unique URLs
-    unique_urls.add(url)
+    unique_page_count.add(url)
 
 def is_valid(url):
     """
     Determines if a URL should be crawled.
-    Returns True for valid URLs, False otherwise.
     """
     try:
         parsed = urlparse(url)
@@ -105,44 +120,188 @@ def is_valid(url):
         if parsed.scheme not in {'http', 'https'}:
             return False
             
-        # Check allowed domains
+        # Strict domain checking
         allowed_domains = {
-            'ics.uci.edu', 'cs.uci.edu', 
+            'ics.uci.edu', 'cs.uci.edu',
             'informatics.uci.edu', 'stat.uci.edu'
         }
         
-        if not any(domain in parsed.netloc for domain in allowed_domains):
+        domain = parsed.netloc.lower()
+        if not any(domain.endswith(d) for d in allowed_domains):
             return False
             
-        # Check file extensions to avoid
-        if re.match(
-            r".*\.(css|js|bmp|gif|jpe?g|ico"
-            + r"|png|tiff?|mid|mp2|mp3|mp4"
-            + r"|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf"
-            + r"|ps|eps|tex|ppt|pptx|doc|docx|xls|xlsx|names"
-            + r"|data|dat|exe|bz2|tar|msi|bin|7z|psd|dmg|iso"
-            + r"|epub|dll|cnf|tgz|sha1"
-            + r"|thmx|mso|arff|rtf|jar|csv"
-            + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower()):
+        # Expanded file type filtering
+        invalid_extensions = {
+            # Documents
+            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf',
+            'odt', 'ods', 'odp', 'tex', 'ps', 'eps',
+            # Images
+            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp',
+            # Audio/Video
+            'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm',
+            # Archives
+            'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz',
+            # Web assets
+            'css', 'js', 'json', 'xml', 'rss', 'atom',
+            # Other
+            'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'apk',
+            'swf', 'woff', 'woff2', 'eot', 'ttf'
+        }
+        
+        # Check file extension
+        path = parsed.path.lower()
+        if '.' in path:
+            ext = path.split('.')[-1]
+            if ext in invalid_extensions:
+                return False
+                
+        # Avoid calendar traps
+        if re.search(r'/calendar/|/events?/|/archive/', path):
+            return False
+            
+        # Avoid specific problematic paths
+        if any(x in path for x in ['/login', '/logout', '/search', '/print/', '/download/']):
+            return False
+            
+        # Avoid URLs that are too long
+        if len(url) > 200:
             return False
             
         return True
 
-    except TypeError:
-        print(f"TypeError for {url}")
+    except Exception as e:
+        print(f"Error validating {url}: {e}")
         return False
 
 def is_stopword(word):
     """
     Checks if a word is a stopword.
-    Returns True for stopwords, False otherwise.
     """
-    # Load stopwords from file
     try:
         with open('stopwords.txt', 'r') as f:
             stopwords = {line.strip() for line in f}
         return word in stopwords
     except:
-        # Fallback to basic stopwords if file not found
+        # Basic stopwords if file not found
         basic_stopwords = {'a', 'an', 'the', 'in', 'on', 'at', 'for', 'to', 'of', 'with'}
         return word in basic_stopwords
+
+def get_analytics():
+    """
+    Returns current analytics data.
+    """
+    return {
+        'unique_pages': len(unique_page_count),
+        'longest_page': max(page_word_counts.items(), key=lambda x: x[1]) if page_word_counts else None,
+        'most_common_words': sorted(word_frequencies.items(), key=lambda x: x[1], reverse=True)[:50],
+        'subdomains': dict(subdomain_counts)
+    }
+
+def is_trap(url):
+    """
+    Detects URL patterns that might indicate a trap.
+    """
+    parsed = urlparse(url)
+    path = parsed.path.lower()
+    
+    # Extract pattern by replacing numbers with *
+    pattern = re.sub(r'\d+', '*', path)
+    
+    # Count pattern occurrences
+    url_patterns[pattern] += 1
+    
+    # Check for common trap patterns
+    if any([
+        # Too many numbers in path
+        len(re.findall(r'\d+', path)) > 4,
+        # Deep directory structure
+        path.count('/') > 6,
+        # Same pattern repeated too many times
+        url_patterns[pattern] > 50,
+        # Calendar-like patterns
+        re.search(r'/\d{4}/\d{2}/\d{2}/', path),
+        # Repeated directory names
+        len(set(path.split('/'))) < path.count('/') - 2
+    ]):
+        return True
+        
+    return False
+
+def create_fingerprint(text, k=5):
+    """
+    Creates a document fingerprint using k-shingles.
+    """
+    # Create k-shingles (character level)
+    shingles = set()
+    text = ' '.join(text.split())  # Normalize whitespace
+    for i in range(len(text) - k + 1):
+        shingles.add(text[i:i+k])
+    
+    # Convert shingles to binary vector
+    vector = []
+    for i in range(32):  # Use 32 bits for fingerprint
+        # Simple hash function
+        hash_val = sum(hash(shingle) * (i + 1) for shingle in shingles)
+        vector.append(1 if hash_val % 2 else 0)
+    
+    return vector
+
+def calculate_similarity(vec1, vec2):
+    """
+    Calculates cosine similarity between two binary vectors.
+    """
+    if not vec1 or not vec2:
+        return 0
+        
+    dot_product = sum(a * b for a, b in zip(vec1, vec2))
+    norm1 = math.sqrt(sum(x * x for x in vec1))
+    norm2 = math.sqrt(sum(x * x for x in vec2))
+    
+    if norm1 == 0 or norm2 == 0:
+        return 0
+        
+    return dot_product / (norm1 * norm2)
+
+def is_similar_content(text, threshold=0.85):
+    """
+    Checks if content is too similar to previously seen pages.
+    """
+    # Create fingerprint for current page
+    current_fingerprint = create_fingerprint(text)
+    
+    # Compare with existing fingerprints
+    for fp in content_fingerprints:
+        if calculate_similarity(current_fingerprint, fp) > threshold:
+            return True
+    
+    # Add current fingerprint to collection
+    content_fingerprints.append(current_fingerprint)
+    if len(content_fingerprints) > 1000:  # Limit memory usage
+        content_fingerprints.pop(0)
+    
+    return False
+
+def is_allowed_by_robots(url):
+    """
+    Checks if URL is allowed by robots.txt
+    """
+    try:
+        parsed = urlparse(url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        
+        # Check cache first
+        if base_url not in robots_cache:
+            rp = urllib.robotparser.RobotFileParser()
+            rp.set_url(f"{base_url}/robots.txt")
+            try:
+                rp.read()
+                robots_cache[base_url] = rp
+            except:
+                # If robots.txt can't be read, assume allowed
+                return True
+        
+        return robots_cache[base_url].can_fetch("*", url)
+        
+    except:
+        # In case of any error, assume allowed
+        return True

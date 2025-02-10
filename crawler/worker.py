@@ -10,42 +10,51 @@ import time
 class Worker(Thread):
     def __init__(self, worker_id, config, frontier):
         self.worker_id = worker_id
-        self.logger = get_logger(f"Worker-{worker_id}", "Worker")
         self.config = config
         self.frontier = frontier
+        self.logger = get_logger(f"Worker-{worker_id}", "Worker")
         # basic check for requests in scraper
         assert {getsource(scraper).find(req) for req in {"from requests import", "import requests"}} == {-1}, "Do not use requests in scraper.py"
         assert {getsource(scraper).find(req) for req in {"from urllib.request import", "import urllib.request"}} == {-1}, "Do not use urllib.request in scraper.py"
         super().__init__(daemon=True)
         
     def run(self):
+        """Main worker loop"""
         while True:
-            tbd_url = self.frontier.get_tbd_url()
-            if not tbd_url:
-                # Check if all workers are waiting and no URLs are available
-                self.logger.info(f"Worker-{self.worker_id}: No URLs available. Waiting...")
+            # Get next URL to process
+            url = self.frontier.get_tbd_url()
+            
+            if not url:
+                # No URLs available, wait before retrying
+                self.logger.info(
+                    f"Worker-{self.worker_id}: No URLs available. Waiting...")
                 time.sleep(self.config.time_delay)
-                # Try again instead of continuing
                 continue
-                
+            
             try:
-                resp = download(tbd_url, self.config, self.logger)
+                # Download page
+                resp = download(url, self.config, self.logger)
+                
                 if resp.status != 200:
                     self.logger.error(
-                        f"Worker-{self.worker_id} failed to download {tbd_url}, "
+                        f"Worker-{self.worker_id} failed to download {url}, "
                         f"status <{resp.status}>")
+                    self.frontier.mark_url_complete(url)
                     continue
-                    
+                
                 self.logger.info(
-                    f"Worker-{self.worker_id} downloaded {tbd_url}, "
+                    f"Worker-{self.worker_id} downloaded {url}, "
                     f"status <{resp.status}>, using cache {self.config.cache_server}.")
-                    
-                scraped_urls = scraper.scraper(tbd_url, resp)
-                for scraped_url in scraped_urls:
-                    self.frontier.add_url(scraped_url)
-                    
-                self.frontier.mark_url_complete(tbd_url)
+                
+                # Extract and add new URLs
+                new_urls = scraper.scraper(url, resp)
+                for new_url in new_urls:
+                    self.frontier.add_url(new_url)
+                
+                # Mark current URL as completed
+                self.frontier.mark_url_complete(url)
                 
             except Exception as e:
-                self.logger.error(f"Worker-{self.worker_id} error processing {tbd_url}: {str(e)}")
-                # Don't mark URL as complete if there was an error
+                self.logger.error(
+                    f"Worker-{self.worker_id} error processing {url}: {str(e)}")
+                self.frontier.mark_url_complete(url)
