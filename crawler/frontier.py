@@ -12,8 +12,9 @@ class Frontier:
         self.logger = get_logger("FRONTIER")
         self.config = config
         
-        # Thread safety
+        # Enhanced thread safety
         self._lock = RLock()
+        self._domain_locks = defaultdict(RLock)
         
         # Domain-based queues for politeness
         self.domain_queues = defaultdict(list)
@@ -68,21 +69,22 @@ class Frontier:
             for domain, urls in list(self.domain_queues.items()):
                 if not urls:
                     continue
-                
-                # Check politeness requirement
-                last_access = self.domain_last_access[domain]
-                if current_time - last_access >= self.config.time_delay:
-                    url = urls[0]  # Peek first URL
                     
-                    # Skip if URL is being processed by another thread
-                    if url in self.in_progress:
-                        continue
+                # Check politeness delay requirements
+                with self._domain_locks[domain]:
+                    last_access = self.domain_last_access[domain]
+                    if current_time - last_access >= self.config.time_delay:
+                        url = urls[0]
                         
-                    # Remove URL from queue and mark as in-progress
-                    urls.pop(0)
-                    self.in_progress.add(url)
-                    self.domain_last_access[domain] = current_time
-                    return url
+                        # Skip URLs that are being processed
+                        if url in self.in_progress:
+                            continue
+                            
+                        # Remove from queue and mark as in progress
+                        urls.pop(0)
+                        self.in_progress.add(url)
+                        self.domain_last_access[domain] = current_time
+                        return url
             
             return None
 
@@ -101,7 +103,8 @@ class Frontier:
                 self.save[urlhash] = (url, False)
                 self.save.sync()
                 domain = urlparse(url).netloc
-                self.domain_queues[domain].append(url)
+                with self._domain_locks[domain]:
+                    self.domain_queues[domain].append(url)
 
     def mark_url_complete(self, url):
         """Thread-safe method to mark URL as completed"""
@@ -109,7 +112,6 @@ class Frontier:
             return
             
         with self._lock:
-            # Remove from in-progress set
             self.in_progress.discard(url)
             
             urlhash = get_urlhash(url)

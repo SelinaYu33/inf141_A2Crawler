@@ -4,8 +4,15 @@ from bs4 import BeautifulSoup
 from collections import defaultdict
 import urllib.robotparser
 import math
+from threading import Lock
+import time
 
-# Analytics tracking
+# Analytics tracking with thread safety
+stats_lock = Lock()
+last_save_time = time.time()
+SAVE_INTERVAL = 300  # Save every 5 minutes
+
+# Global statistics tracking
 word_frequencies = defaultdict(int)  # Track word frequencies
 page_word_counts = {}  # Track page lengths
 subdomain_counts = defaultdict(int)  # Track subdomains
@@ -16,6 +23,19 @@ url_patterns = defaultdict(int)  # Track URL patterns
 content_fingerprints = []  # Store document fingerprints
 robots_cache = {}  # Cache for robots.txt parsers
 visited_urls = set()  # Track already visited URLs
+
+def save_stats_if_needed():
+    """
+    Saves statistics to file if enough time has passed since last save
+    """
+    global last_save_time
+    current_time = time.time()
+    
+    if current_time - last_save_time >= SAVE_INTERVAL:
+        with stats_lock:
+            with open('crawler_progress.txt', 'w') as f:
+                f.write(get_analytics())
+            last_save_time = current_time
 
 def scraper(url, resp):
     """
@@ -59,8 +79,9 @@ def extract_next_links(url, resp):
         if is_trap(url) or is_similar_content(text):
             return []
         
-        # Process page content for analytics
-        process_content(url, text)
+        # Process page content for analytics with thread safety
+        with stats_lock:
+            process_content(url, text)
         
         # Extract links
         links = []
@@ -108,6 +129,9 @@ def process_content(url, text):
     
     # Track unique URLs
     unique_page_count.add(url)
+    
+    # Save stats periodically
+    save_stats_if_needed()
 
 def is_valid(url):
     """
@@ -130,7 +154,7 @@ def is_valid(url):
         if not any(domain.endswith(d) for d in allowed_domains):
             return False
             
-        # Expanded file type filtering
+        # File type filtering
         invalid_extensions = {
             # Documents
             'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf',
@@ -305,3 +329,4 @@ def is_allowed_by_robots(url):
     except:
         # In case of any error, assume allowed
         return True
+

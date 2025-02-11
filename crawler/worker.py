@@ -21,17 +21,17 @@ class Worker(Thread):
     def run(self):
         """Main worker loop"""
         while True:
-            # Get next URL to process
-            url = self.frontier.get_tbd_url()
-            
-            if not url:
-                # No URLs available, wait before retrying
-                self.logger.info(
-                    f"Worker-{self.worker_id}: No URLs available. Waiting...")
-                time.sleep(self.config.time_delay)
-                continue
-            
             try:
+                # Get next URL to process
+                url = self.frontier.get_tbd_url()
+                
+                if not url:
+                    # No URLs available, wait before retrying
+                    self.logger.info(
+                        f"Worker-{self.worker_id}: No URLs available. Waiting...")
+                    time.sleep(self.config.time_delay)
+                    continue
+                
                 # Download page
                 resp = download(url, self.config, self.logger)
                 
@@ -57,4 +57,5 @@ class Worker(Thread):
             except Exception as e:
                 self.logger.error(
                     f"Worker-{self.worker_id} error processing {url}: {str(e)}")
-                self.frontier.mark_url_complete(url)
+                if url:
+                    self.frontier.mark_url_complete(url)
