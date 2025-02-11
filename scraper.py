@@ -27,6 +27,83 @@ content_fingerprints = []  # Store document fingerprints
 robots_cache = {}  # Cache for robots.txt parsers
 visited_urls = set()  # Track already visited URLs
 
+class SimHash:
+    """
+    Implementation of SimHash algorithm for near-duplicate detection
+    """
+    def __init__(self, text, hash_bits=64):
+        self.hash_bits = hash_bits
+        self.hash_value = self._generate_hash(text)
+
+    def _preprocess_text(self, text):
+        """
+        Process text into features (words) with frequencies
+        """
+        # Normalize text
+        text = text.lower()
+        # Remove special characters and extra spaces
+        text = re.sub(r'[^\w\s]', ' ', text)
+        text = ' '.join(text.split())
+        
+        # Get word frequencies
+        words = text.split()
+        word_freq = defaultdict(int)
+        for word in words:
+            if len(word) > 2:  # Skip very short words
+                word_freq[word] += 1
+        return word_freq
+
+    def _hash_function(self, word):
+        """
+        Generate a b-bit hash value for a word using basic hash function
+        """
+        hash_val = 0
+        for char in word.encode('utf-8'):
+            hash_val = (hash_val * 31 + char) & ((1 << self.hash_bits) - 1)
+        return hash_val
+
+    def _generate_hash(self, text):
+        """
+        Generate SimHash value for text
+        """
+        # Step 1: Get features (words) with weights (frequencies)
+        features = self._preprocess_text(text)
+        
+        # Step 3: Initialize b-dimensional vector V
+        v = [0] * self.hash_bits
+        
+        # Process each word
+        for word, freq in features.items():
+            # Step 2: Generate hash for word
+            hash_val = self._hash_function(word)
+            
+            # Step 3: Update vector V
+            for i in range(self.hash_bits):
+                bitmask = 1 << i
+                if hash_val & bitmask:
+                    v[i] += freq  # Add weight if bit is 1
+                else:
+                    v[i] -= freq  # Subtract weight if bit is 0
+        
+        # Step 4: Generate final fingerprint
+        fingerprint = 0
+        for i in range(self.hash_bits):
+            if v[i] > 0:
+                fingerprint |= 1 << i
+        
+        return fingerprint
+
+    def distance(self, other):
+        """
+        Calculate Hamming distance between two SimHash values
+        """
+        x = self.hash_value ^ other.hash_value
+        diff_bits = 0
+        while x:
+            diff_bits += 1
+            x &= (x - 1)  # Clear the least significant bit
+        return diff_bits
+
 def save_stats_if_needed():
     """
     Saves statistics to file if enough time has passed since last save
@@ -118,7 +195,7 @@ def extract_next_links(url, resp):
             return []
         
         # Check for traps and similar content
-        if is_trap(url) or is_similar_content(text):
+        if is_trap(url) or is_similar_content(text, url):
             print(f"Detected trap or similar content: {url}")
             return []
         
@@ -316,55 +393,20 @@ def is_trap(url):
         
     return False
 
-def create_fingerprint(text, k=5):
+def is_similar_content(text, url, threshold=10):
     """
-    Creates a document fingerprint using k-shingles.
+    Check if content is too similar to previously seen pages using SimHash
     """
-    # Create k-shingles (character level)
-    shingles = set()
-    text = ' '.join(text.split())  # Normalize whitespace
-    for i in range(len(text) - k + 1):
-        shingles.add(text[i:i+k])
-    
-    # Convert shingles to binary vector
-    vector = []
-    for i in range(32):  # Use 32 bits for fingerprint
-        # Simple hash function
-        hash_val = sum(hash(shingle) * (i + 1) for shingle in shingles)
-        vector.append(1 if hash_val % 2 else 0)
-    
-    return vector
-
-def calculate_similarity(vec1, vec2):
-    """
-    Calculates cosine similarity between two binary vectors.
-    """
-    if not vec1 or not vec2:
-        return 0
-        
-    dot_product = sum(a * b for a, b in zip(vec1, vec2))
-    norm1 = math.sqrt(sum(x * x for x in vec1))
-    norm2 = math.sqrt(sum(x * x for x in vec2))
-    
-    if norm1 == 0 or norm2 == 0:
-        return 0
-        
-    return dot_product / (norm1 * norm2)
-
-def is_similar_content(text, threshold=0.85):
-    """
-    Checks if content is too similar to previously seen pages.
-    """
-    # Create fingerprint for current page
-    current_fingerprint = create_fingerprint(text)
+    current_hash = SimHash(text)
     
     # Compare with existing fingerprints
-    for fp in content_fingerprints:
-        if calculate_similarity(current_fingerprint, fp) > threshold:
+    for stored_url, stored_hash in content_fingerprints:
+        if current_hash.distance(stored_hash) < threshold:
+            print(f"Similar content detected: {url} is similar to {stored_url}")
             return True
     
     # Add current fingerprint to collection
-    content_fingerprints.append(current_fingerprint)
+    content_fingerprints.append((url, current_hash))
     if len(content_fingerprints) > 1000:  # Limit memory usage
         content_fingerprints.pop(0)
     
