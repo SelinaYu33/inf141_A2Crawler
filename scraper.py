@@ -9,6 +9,9 @@ import time
 
 # Analytics tracking with thread safety
 stats_lock = Lock()
+total_urls_found = 0
+total_urls_crawled = 0
+urls_per_domain = defaultdict(int)
 last_save_time = time.time()
 SAVE_INTERVAL = 300  # Save every 5 minutes
 
@@ -38,6 +41,11 @@ def save_stats_if_needed():
                 f.write(f"""Crawler Progress Report
 Time: {time.strftime('%Y-%m-%d %H:%M:%S')}
 
+Overall Progress:
+Total URLs Found: {total_urls_found}
+Total URLs Crawled: {total_urls_crawled}
+
+Analytics:
 Unique Pages: {stats['unique_pages']}
 Longest Page: {stats['longest_page'][0]} ({stats['longest_page'][1]} words)
 
@@ -146,6 +154,8 @@ def process_content(url, text):
     """
     Analyzes page content for statistics tracking.
     """
+    global total_urls_crawled
+    
     # Clean and normalize text
     text = ' '.join(text.split())
     
@@ -171,6 +181,10 @@ def process_content(url, text):
     
     # Track unique URLs
     unique_page_count.add(url)
+    
+    # Update counters
+    total_urls_crawled += 1
+    urls_per_domain[parsed_url.netloc] += 1
     
     # Save stats periodically
     save_stats_if_needed()
