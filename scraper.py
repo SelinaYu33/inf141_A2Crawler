@@ -161,15 +161,28 @@ def scraper(url, resp):
     
     if not is_allowed_by_robots(url):
         return []
-        
-    links = extract_next_links(url, resp)
+    
+    # Handle redirects
+    final_url = url
+    if resp.status in (301, 302, 303, 307, 308):  # Redirect status codes
+        if resp.raw_response and resp.raw_response.url:
+            final_url = resp.raw_response.url
+            if not is_valid(final_url) or not is_allowed_by_robots(final_url):
+                return []
+            print(f"Following redirect: {url} -> {final_url}")
+    
+    links = extract_next_links(final_url, resp)
     return [link for link in links if is_valid(link)]
 
 def extract_next_links(url, resp):
     """
     Processes page content and extracts links.
     """
-    if not resp.raw_response or resp.status != 200:
+    if not resp.raw_response:
+        return []
+    
+    # Accept both 200 and redirect status codes
+    if resp.status not in (200, 301, 302, 303, 307, 308):
         return []
     
     try:
@@ -178,7 +191,7 @@ def extract_next_links(url, resp):
         
         # Check content size
         content_size = len(resp.raw_response.content)
-        if content_size > 5 * 1024 * 1024:  # Skip files larger than 1MB
+        if content_size > 5 * 1024 * 1024:  # Skip files larger than 5MB
             print(f"Skipping large file: {url} ({content_size} bytes)")
             return []
         
@@ -224,7 +237,7 @@ def extract_next_links(url, resp):
         return links
         
     except Exception as e:
-        print(f"Error processing {url}: {e}")
+        print(f"Error processing {url}: {str(e)}")
         return []
 
 def process_content(url, text):
