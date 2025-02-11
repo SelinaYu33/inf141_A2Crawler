@@ -33,9 +33,32 @@ def save_stats_if_needed():
     
     if current_time - last_save_time >= SAVE_INTERVAL:
         with stats_lock:
+            stats = get_analytics()
             with open('crawler_progress.txt', 'w') as f:
-                f.write(get_analytics())
+                f.write(f"""Crawler Progress Report
+Time: {time.strftime('%Y-%m-%d %H:%M:%S')}
+
+Unique Pages: {stats['unique_pages']}
+Longest Page: {stats['longest_page'][0]} ({stats['longest_page'][1]} words)
+
+Top 10 Most Common Words:
+{format_common_words(stats['most_common_words'][:10])}
+
+Recent Subdomains:
+{format_subdomains(list(stats['subdomains'].items())[-5:])}
+
+Notes:
+- Traps detected and avoided: {len(url_patterns)}
+- Similar pages skipped: {len(content_fingerprints)}
+- Robots.txt entries cached: {len(robots_cache)}
+""")
             last_save_time = current_time
+
+def format_common_words(words):
+    return '\n'.join(f"  {word}: {count}" for word, count in words)
+
+def format_subdomains(subdomains):
+    return '\n'.join(f"  {domain}: {count} pages" for domain, count in subdomains)
 
 def scraper(url, resp):
     """
@@ -68,6 +91,12 @@ def extract_next_links(url, resp):
         # Parse with BeautifulSoup for better HTML handling
         soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
         
+        # Check content size
+        content_size = len(resp.raw_response.content)
+        if content_size > 5 * 1024 * 1024:  # Skip files larger than 1MB
+            print(f"Skipping large file: {url} ({content_size} bytes)")
+            return []
+        
         # Remove script and style elements
         for element in soup(['script', 'style', 'meta', 'link']):
             element.decompose()
@@ -75,24 +104,37 @@ def extract_next_links(url, resp):
         # Extract text content
         text = soup.get_text()
         
+        # Skip pages with too little content
+        if len(text.split()) < 50:  # Skip pages with fewer than 50 words
+            print(f"Skipping low content page: {url}")
+            return []
+        
         # Check for traps and similar content
         if is_trap(url) or is_similar_content(text):
+            print(f"Detected trap or similar content: {url}")
             return []
         
         # Process page content for analytics with thread safety
         with stats_lock:
             process_content(url, text)
+            save_stats_if_needed()
         
         # Extract links
         links = []
         for a_tag in soup.find_all('a', href=True):
             href = a_tag['href'].strip()
             if href and not href.startswith(('javascript:', 'mailto:', 'tel:')):
-                # Convert relative URLs to absolute
-                absolute_url = urljoin(url, href)
-                # Remove fragments and query parameters
-                clean_url = absolute_url.split('#')[0].split('?')[0]
-                links.append(clean_url)
+                try:
+                    # Convert relative URLs to absolute
+                    absolute_url = urljoin(url, href)
+                    # Remove fragments and query parameters
+                    clean_url = absolute_url.split('#')[0]
+                    # Ensure URL is ASCII-only
+                    clean_url = clean_url.encode('ascii', errors='ignore').decode()
+                    if clean_url:
+                        links.append(clean_url)
+                except:
+                    continue
         
         return links
         
@@ -245,8 +287,17 @@ def is_trap(url):
         # Calendar-like patterns
         re.search(r'/\d{4}/\d{2}/\d{2}/', path),
         # Repeated directory names
-        len(set(path.split('/'))) < path.count('/') - 2
+        len(set(path.split('/'))) < path.count('/') - 2,
+        # Long query strings
+        len(parsed.query) > 100,
+        # Too many parameters
+        parsed.query.count('&') > 5,
+        # Infinite redirects
+        re.search(r'/(redir|goto|redirect|link)/', path),
+        # Session IDs in URL
+        re.search(r'(sess|session|sid|uid)=', parsed.query)
     ]):
+        print(f"Detected URL trap: {url}")
         return True
         
     return False
