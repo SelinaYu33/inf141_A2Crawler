@@ -123,12 +123,16 @@ def scraper(url, resp):
     Returns:
         List of valid URLs found on the page
     """
-    # Skip if already visited
-    if url in visited_urls:
+    clean_url = url.split('#')[0]
+    if clean_url in visited_urls:
         return []
-    visited_urls.add(url)
+    visited_urls.add(clean_url)
     
     if not resp.raw_response:
+        return []
+    
+
+    if resp.status not in (200, 301, 302, 303, 307, 308):
         return []
     
     try:
@@ -487,6 +491,7 @@ def is_valid(url):
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp',
             # Audio/Video
             'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm',
+            'mpg', 'mpeg', 'm4v', '3gp', 'ogg', 'ogv', 'MPG',
             # Archives
             'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz',
             # Web assets
@@ -499,16 +504,19 @@ def is_valid(url):
         # Check file extension
         path = parsed.path.lower()
         if '.' in path:
-            ext = path.split('.')[-1]
+            ext = path.split('.')[-1].lower()
             if ext in invalid_extensions:
                 return False
+        
+        if any(x in path.lower() for x in ['/images/', '/img/', '/media/', '/video/', '/audio/', '/download/']):
+            return False
                 
         # Avoid calendar traps
         if re.search(r'/calendar/|/events?/|/archive/', path):
             return False
             
         # Avoid specific problematic paths
-        if any(x in path for x in ['/login', '/logout', '/search', '/print/', '/download/']):
+        if any(x in path for x in ['/login', '/logout', '/search', '/print/']):
             return False
             
         # Avoid URLs that are too long
