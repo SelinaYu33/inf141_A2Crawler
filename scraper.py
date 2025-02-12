@@ -168,20 +168,50 @@ def scraper(url, resp):
         return []
     visited_urls.add(url)
     
-    if not is_allowed_by_robots(url):
+    if not resp.raw_response:
         return []
     
-    # Handle redirects
-    final_url = url
-    if resp.status in (301, 302, 303, 307, 308):  # Redirect status codes
-        if resp.raw_response and resp.raw_response.url:
-            final_url = resp.raw_response.url
-            if not is_valid(final_url) or not is_allowed_by_robots(final_url):
-                return []
-            print(f"Following redirect: {url} -> {final_url}")
-    
-    links = extract_next_links(final_url, resp)
-    return [link for link in links if is_valid(link)]
+    try:
+        # Parse with BeautifulSoup
+        soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
+        
+        # Remove script and style elements
+        for element in soup(['script', 'style', 'meta', 'link']):
+            element.decompose()
+            
+        # Extract text content
+        text = soup.get_text()
+        
+        # Check for traps and similar content
+        if is_trap(url) or is_similar_content(text, url):
+            return []
+        
+        # Process page content for analytics
+        process_content(url, text)
+        
+        # Extract links
+        links = []
+        for a_tag in soup.find_all('a', href=True):
+            href = a_tag['href'].strip()
+            if href and not href.startswith(('javascript:', 'mailto:', 'tel:')):
+                try:
+                    # Convert relative URLs to absolute
+                    absolute_url = urljoin(url, href)
+                    # Remove fragments
+                    clean_url = absolute_url.split('#')[0]
+                    # Ensure URL is ASCII-only
+                    clean_url = clean_url.encode('ascii', errors='ignore').decode()
+                    if clean_url:
+                        links.append(clean_url)
+                except:
+                    continue
+        
+        # Check robots.txt before returning links
+        return [link for link in links if is_valid(link) and is_allowed_by_robots(link)]
+        
+    except Exception as e:
+        print(f"Error processing {url}: {str(e)}")
+        return []
 
 def extract_next_links(url, resp):
     """
