@@ -316,7 +316,7 @@ def process_content(url, text):
     unique_page_count.add(url)
     total_urls_crawled += 1
     urls_per_domain[parsed.netloc] += 1
-
+    save_stats_if_needed()
 
 def get_analytics():
     """
