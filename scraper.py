@@ -6,6 +6,7 @@ import urllib.robotparser
 import math
 from threading import Lock
 import time
+import os
 
 # Analytics tracking with thread safety
 stats_lock = Lock()
@@ -26,6 +27,14 @@ url_patterns = defaultdict(int)  # Track URL patterns
 content_fingerprints = []  # Store document fingerprints
 robots_cache = {}  # Cache for robots.txt parsers
 visited_urls = set()  # Track already visited URLs
+
+# Load stopwords
+STOPWORDS = set()
+try:
+    with open('stopwords.txt', 'r') as f:
+        STOPWORDS = set(word.strip().lower() for word in f)
+except Exception as e:
+    print(f"Warning: Could not load stopwords.txt: {e}")
 
 class SimHash:
     """
@@ -261,23 +270,24 @@ def process_content(url, text):
     words = text.lower().split()
     
     # Update word frequencies (excluding stopwords)
-    for word in words:
-        if len(word) > 2 and not is_stopword(word):
-            word_frequencies[word] += 1
+    with stats_lock:  # 使用锁保护全局计数器
+        for word in words:
+            if len(word) > 2 and not is_stopword(word):  # 使用stopwords过滤
+                word_frequencies[word] += 1
     
-    # Track page length
+    # Track page length (including stopwords for total length)
     page_word_counts[url] = len(words)
     
     # Track subdomains for ics.uci.edu
     if 'ics.uci.edu' in parsed.netloc:
-        subdomain_counts[parsed.netloc] += 1
+        with stats_lock:
+            subdomain_counts[parsed.netloc] += 1
     
     # Track unique URLs
-    unique_page_count.add(url)
-    
-    # Update counters
-    total_urls_crawled += 1
-    urls_per_domain[parsed.netloc] += 1
+    with stats_lock:
+        unique_page_count.add(url)
+        total_urls_crawled += 1
+        urls_per_domain[parsed.netloc] += 1
     
     # Save stats periodically
     save_stats_if_needed()
@@ -348,16 +358,9 @@ def is_valid(url):
 
 def is_stopword(word):
     """
-    Checks if a word is a stopword.
+    Check if a word is a stopword
     """
-    try:
-        with open('stopwords.txt', 'r') as f:
-            stopwords = {line.strip() for line in f}
-        return word in stopwords
-    except:
-        # Basic stopwords if file not found
-        basic_stopwords = {'a', 'an', 'the', 'in', 'on', 'at', 'for', 'to', 'of', 'with'}
-        return word in basic_stopwords
+    return word.lower() in STOPWORDS
 
 def get_analytics():
     """
