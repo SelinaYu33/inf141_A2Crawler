@@ -279,10 +279,17 @@ Additional Statistics:
 """)
             last_save_time = current_time
 
-def format_word_frequencies(words):
-    """Format word frequencies list"""
-    return '\n'.join(f"{i+1}. {word}: {count}" 
-                    for i, (word, count) in enumerate(words))
+def format_word_frequencies(word_freq_list):
+    """
+    Format word frequencies for output, ensuring ASCII-only content
+    """
+    output = []
+    rank = 1
+    for word, freq in word_freq_list:
+        if word.isascii() and word.isalnum():
+            output.append(f"{rank}. {word}: {freq}")
+            rank += 1
+    return '\n'.join(output)
 
 def format_subdomains(subdomains):
     """Format subdomains list with full URLs"""
@@ -292,31 +299,45 @@ def format_subdomains(subdomains):
 def process_content(url, text):
     """
     Analyzes page content for statistics tracking.
+    Ensures proper text encoding and filtering.
     """
     global total_urls_crawled
-    print("Processing Content: "+ url)
-    # Clean and normalize text
-    text = ' '.join(text.split())
+    print("Processing Content: " + url)
     
-    # Adjust minimum content length for different types of pages
-    parsed = urlparse(url)
-    
-    # Process words
-    words = text.lower().split()
-    
-    # Update word frequencies (excluding stopwords)
-    for word in words:
-        if len(word) > 2 and not is_stopword(word):
-            word_frequencies[word] += 1
-    
-    # Track page length (including stopwords for total length)
-    page_word_counts[url] = len(words)
-
-    # Track unique URLs
-    unique_page_count.add(url)
-    total_urls_crawled += 1
-    urls_per_domain[parsed.netloc] += 1
-    save_stats_if_needed()
+    try:
+        # Ensure text is properly decoded and normalized
+        if isinstance(text, bytes):
+            text = text.decode('utf-8', errors='ignore')
+        
+        # Remove non-ASCII characters and normalize spaces
+        text = ''.join(char for char in text if ord(char) < 128)
+        text = ' '.join(text.split())
+        
+        # Process words (only ASCII characters)
+        words = [word.lower() for word in text.split() 
+                if word.isascii() and len(word) > 2 and not is_stopword(word)]
+        
+        # Update word frequencies
+        with stats_lock:
+            for word in words:
+                if word.isalnum():  # Only count alphanumeric words
+                    word_frequencies[word] += 1
+            
+            # Track page length
+            page_word_counts[url] = len(words)
+            
+            # Track unique URLs
+            unique_page_count.add(url)
+            total_urls_crawled += 1
+            
+            # Update domain statistics
+            parsed = urlparse(url)
+            urls_per_domain[parsed.netloc] += 1
+            
+            save_stats_if_needed()
+            
+    except Exception as e:
+        print(f"Error processing content for {url}: {e}")
 
 def get_analytics():
     """
@@ -478,7 +499,8 @@ def is_allowed_by_robots(url):
 
 def is_valid(url):
     """
-    Determines if a URL should be crawled.
+    Strictly validates URLs against allowed domains and paths.
+    Only allows *.ics.uci.edu/*, *.cs.uci.edu/*, *.informatics.uci.edu/*, *.stat.uci.edu/*
     """
     try:
         parsed = urlparse(url)
@@ -487,21 +509,31 @@ def is_valid(url):
         if parsed.scheme not in {'http', 'https'}:
             return False
             
-        # Strict domain checking
+        # Strict domain validation
+        domain = parsed.netloc.lower()
         allowed_domains = {
-            'ics.uci.edu', 'cs.uci.edu',
-            'informatics.uci.edu', 'stat.uci.edu'
+            'ics.uci.edu',
+            'cs.uci.edu',
+            'informatics.uci.edu',
+            'stat.uci.edu'
         }
         
-        domain = parsed.netloc.lower()
-        if not any(domain.endswith(d) for d in allowed_domains):
+        # Check if domain matches any of the allowed patterns
+        is_allowed = False
+        for allowed_domain in allowed_domains:
+            # Check exact match or subdomain
+            if domain == allowed_domain or domain.endswith('.' + allowed_domain):
+                is_allowed = True
+                break
+                
+        if not is_allowed:
             return False
             
-        # File type filtering
+        # File extension filtering
         invalid_extensions = {
             # Documents
             'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf',
-            'odt', 'ods', 'odp', 'tex', 'ps', 'eps',
+            'odt', 'ods', 'odp', 'tex', 'ps', 'eps', 'ppsx',
             # Images
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp',
             # Audio/Video
@@ -523,15 +555,26 @@ def is_valid(url):
             if ext in invalid_extensions:
                 return False
         
-        if any(x in path.lower() for x in ['/images/', '/img/', '/media/', '/video/', '/audio/', '/download/']):
+        # Filter out resource directories
+        if any(x in path.lower() for x in [
+            '/images/', '/img/', '/media/', 
+            '/video/', '/audio/', '/download/',
+            '/css/', '/js/', '/assets/', '/fonts/',
+            '/static/', '/uploads/', '/files/'
+        ]):
             return False
                 
-        # Avoid calendar traps
+        # Avoid calendar and event traps
         if re.search(r'/calendar/|/events?/|/archive/', path):
             return False
             
         # Avoid specific problematic paths
-        if any(x in path for x in ['/login', '/logout', '/search', '/print/']):
+        if any(x in path for x in [
+            '/login', '/logout', '/search', '/print/',
+            '/feed', '/rss', '/atom', '/api/', '/ajax/',
+            '/cgi-bin/', '/wp-admin/', '/wp-content/',
+            '/admin/', '/backup/', '/raw/'
+        ]):
             return False
             
         # Avoid URLs that are too long
