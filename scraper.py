@@ -535,14 +535,14 @@ def is_valid(url):
             'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf',
             'odt', 'ods', 'odp', 'tex', 'ps', 'eps', 'ppsx',
             # Images
-            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp',
+            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp', 'heic', 'heif', 'hevc', 'avif',
             # Audio/Video
             'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm',
-            'mpg', 'mpeg', 'm4v', '3gp', 'ogg', 'ogv', 'MPG',
+            'mpg', 'mpeg', 'm4v', '3gp', 'ogg', 'ogv', 'MPG', 
             # Archives
-            'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz',
+            'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz', 'deb', 'rpm', 'msi', 'dmg', 'iso', 'bin', 'apk',
             # Web assets
-            'css', 'js', 'json', 'xml', 'rss', 'atom',
+            'css', 'js', 'json', 'xml', 'rss', 'atom', 'php',
             # Other
             'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'apk',
             'swf', 'woff', 'woff2', 'eot', 'ttf'
