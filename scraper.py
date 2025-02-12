@@ -406,7 +406,7 @@ def is_trap(url):
         
     return False
 
-def is_similar_content(text, url, threshold=10):
+def is_similar_content(text, url, threshold=90):
     """
     Check if content is too similar to previously seen pages using SimHash
     """
