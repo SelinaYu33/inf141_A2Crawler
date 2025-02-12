@@ -313,18 +313,21 @@ def process_content(url, text):
         text = ''.join(char for char in text if ord(char) < 128)
         text = ' '.join(text.split())
         
-        # Process words (only ASCII characters)
-        words = [word.lower() for word in text.split() 
-                if word.isascii() and len(word) > 2 and not is_stopword(word)]
+        # Process all words for page length (including stopwords)
+        all_words = [word.lower() for word in text.split() 
+                    if word.isascii() and word.isalnum()]
         
-        # Update word frequencies
+        # Track total page length (including stopwords)
         with stats_lock:
-            for word in words:
-                if word.isalnum():  # Only count alphanumeric words
-                    word_frequencies[word] += 1
+            page_word_counts[url] = len(all_words)
             
-            # Track page length
-            page_word_counts[url] = len(words)
+            # Process words for frequency (excluding stopwords)
+            content_words = [word for word in all_words 
+                           if len(word) > 2 and not is_stopword(word)]
+            
+            # Update word frequencies
+            for word in content_words:
+                word_frequencies[word] += 1
             
             # Track unique URLs
             unique_page_count.add(url)
