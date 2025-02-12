@@ -354,13 +354,13 @@ def get_analytics():
         'subdomains': dict(sorted(ics_subdomains.items()))  # Sort alphabetically
     }
 
-
 def is_trap(url):
     """
     Detects URL patterns that might indicate a trap.
     """
     parsed = urlparse(url)
     path = parsed.path.lower()
+    query = parsed.query.lower()
     
     # Extract pattern by replacing numbers with *
     pattern = re.sub(r'\d+', '*', path)
@@ -370,24 +370,39 @@ def is_trap(url):
     
     # Check for common trap patterns
     if any([
-        # Too many numbers in path
+        # Existing checks
         len(re.findall(r'\d+', path)) > 4,
-        # Deep directory structure
         path.count('/') > 6,
-        # Same pattern repeated too many times
         url_patterns[pattern] > 50,
-        # Calendar-like patterns
         re.search(r'/\d{4}/\d{2}/\d{2}/', path),
-        # Repeated directory names
         len(set(path.split('/'))) < path.count('/') - 2,
-        # Long query strings
         len(parsed.query) > 100,
-        # Too many parameters
         parsed.query.count('&') > 5,
-        # Infinite redirects
-        re.search(r'/(redir|goto|redirect|link)/', path),
-        # Session IDs in URL
-        re.search(r'(sess|session|sid|uid)=', parsed.query)
+        
+        # Additional checks
+        # Wiki-related traps
+        re.search(r'(timeline|history|revisions|diff|changes)', path),
+        re.search(r'\?do=(index|revisions|diff|backlink)', query),
+        
+        # Timestamp-related traps
+        re.search(r'from=\d{4}-\d{2}-\d{2}', query),
+        re.search(r'precision=(second|minute|hour)', query),
+        
+        # File download traps
+        re.search(r'action=download', query),
+        re.search(r'\.(zip|rar|tar|gz)$', path),
+        
+        # Special directory traps
+        re.search(r'/(virus|malware|spam)/', path),
+        path.count('wiki') > 1,
+        
+        # Dynamic parameter traps
+        re.search(r'[?&](page|offset|start|limit)=\d+', url),
+        re.search(r'[?&](sort|order|filter)=', url),
+        
+        # Duplicate parameter checks
+        len(re.findall(r'do=', query)) > 1,
+        len(re.findall(r'from=', query)) > 1
     ]):
         print(f"Detected URL trap: {url}")
         return True
