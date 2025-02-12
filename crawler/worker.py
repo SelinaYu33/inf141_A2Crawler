@@ -16,7 +16,6 @@ class Worker(Thread):
         # basic check for requests in scraper
         assert {getsource(scraper).find(req) for req in {"from requests import", "import requests"}} == {-1}, "Do not use requests in scraper.py"
         assert {getsource(scraper).find(req) for req in {"from urllib.request import", "import urllib.request"}} == {-1}, "Do not use urllib.request in scraper.py"
-        self.sleep_time = config.time_delay / 4  # Shorter sleep time for better responsiveness
         super().__init__(daemon=True)
         
     def run(self):
@@ -27,8 +26,8 @@ class Worker(Thread):
                 url = self.frontier.get_tbd_url()
                 
                 if not url:
-                    # No URLs available, use shorter sleep time
-                    time.sleep(self.sleep_time)
+                    # No URLs available, wait a bit
+                    time.sleep(0.1)  # Short sleep to prevent CPU spinning
                     continue
                 
                 # Download page

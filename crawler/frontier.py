@@ -24,20 +24,10 @@ class Frontier:
         # Global tracking
         self.global_in_progress = set()  # All in-progress URLs
         
-        # Add priority queue for domains
-        self.domain_priorities = {}  # Track next available time for each domain
-        self.last_domain_check = {}  # Track when we last checked each domain
-        
-        if not os.path.exists(self.config.save_file) and not restart:
-            self.logger.info(
-                f"Did not find save file {self.config.save_file}, "
-                f"starting from seed.")
-        elif os.path.exists(self.config.save_file) and restart:
-            self.logger.info(
-                f"Found save file {self.config.save_file}, deleting it.")
-            os.remove(self.config.save_file)
-        
         # Initialize persistent storage
+        if restart and os.path.exists(self.config.save_file):
+            os.remove(self.config.save_file)
+            
         self.save = shelve.open(self.config.save_file)
         if restart:
             for url in self.config.seed_urls:
@@ -50,54 +40,28 @@ class Frontier:
         current_time = time.time()
         
         with self._lock:
-            # Find available domain with shortest wait time
-            next_domain = None
-            min_wait_time = float('inf')
-            
+            # Find domain with available URLs and sufficient delay
             for domain, urls in self.domain_queues.items():
                 if not urls:
                     continue
                     
-                # Only check domains we haven't checked recently
-                if domain in self.last_domain_check:
-                    if current_time - self.last_domain_check[domain] < self.config.time_delay / 2:
+                with self._domain_locks[domain]:
+                    # Strict politeness check with 500ms delay
+                    time_since_last = current_time - self.domain_last_access[domain]
+                    if time_since_last < 0.5:  # 500ms fixed delay
                         continue
-                
-                wait_time = 0
-                if domain in self.domain_priorities:
-                    wait_time = max(0, self.domain_priorities[domain] - current_time)
-                
-                if wait_time < min_wait_time:
-                    next_domain = domain
-                    min_wait_time = wait_time
-            
-            if not next_domain:
-                return None
-                
-            # Get domain lock for atomic operations
-            with self._domain_locks[next_domain]:
-                # Double check politeness after getting lock
-                current_time = time.time()
-                if current_time < self.domain_priorities.get(next_domain, 0):
-                    return None
-                
-                # Get first non-in-progress URL
-                urls = self.domain_queues[next_domain]
-                for i, url in enumerate(urls):
-                    if url not in self.global_in_progress:
-                        # Remove URL from queue
-                        urls.pop(i)
-                        # Mark as in progress
-                        self.global_in_progress.add(url)
-                        self.domain_in_progress[next_domain].add(url)
-                        
-                        # Update timing information
-                        self.domain_priorities[next_domain] = current_time + self.config.time_delay
-                        self.last_domain_check[next_domain] = current_time
-                        
-                        self.logger.info(
-                            f"Assigning URL {url} from domain {next_domain}")
-                        return url
+                    # Get first non-in-progress URL
+                    for i, url in enumerate(urls):
+                        if url not in self.global_in_progress:
+                            # Remove URL from queue
+                            urls.pop(i)
+                            # Mark as in progress
+                            self.global_in_progress.add(url)
+                            self.domain_in_progress[domain].add(url)
+                            # Update last access time
+                            self.domain_last_access[domain] = current_time
+                            
+                            return url
             
             return None
 
@@ -135,8 +99,7 @@ class Frontier:
             # Update persistent storage
             urlhash = get_urlhash(url)
             if urlhash not in self.save:
-                self.logger.error(
-                    f"Completed url {url}, but have not seen it before.")
+                self.logger.error(f"Completed url {url}, but have not seen it before.")
                 return
             
             self.save[urlhash] = (url, True)
