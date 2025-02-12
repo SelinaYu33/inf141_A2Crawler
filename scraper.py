@@ -19,7 +19,6 @@ SAVE_INTERVAL = 300  # Save every 5 minutes
 # Global statistics tracking
 word_frequencies = defaultdict(int)  # Track word frequencies
 page_word_counts = {}  # Track page lengths
-subdomain_counts = defaultdict(int)  # Track subdomains
 unique_page_count = set()  # Track unique URLs
 
 # Trap detection
@@ -113,46 +112,7 @@ class SimHash:
             x &= (x - 1)  # Clear the least significant bit
         return diff_bits
 
-def save_stats_if_needed():
-    """
-    Saves statistics to file if enough time has passed since last save
-    """
-    global last_save_time
-    current_time = time.time()
-    
-    if current_time - last_save_time >= SAVE_INTERVAL:
-        with stats_lock:
-            stats = get_analytics()
-            with open('crawler_progress.txt', 'w') as f:
-                f.write(f"""Crawler Progress Report
-Time: {time.strftime('%Y-%m-%d %H:%M:%S')}
 
-Overall Progress:
-Total URLs Found: {total_urls_found}
-Total URLs Crawled: {total_urls_crawled}
-
-Analytics:
-Unique Pages: {stats['unique_pages']}
-Longest Page: {stats['longest_page'][0]} ({stats['longest_page'][1]} words)
-
-Top 10 Most Common Words:
-{format_common_words(stats['most_common_words'][:10])}
-
-Recent Subdomains:
-{format_subdomains(list(stats['subdomains'].items())[-5:])}
-
-Notes:
-- Traps detected and avoided: {len(url_patterns)}
-- Similar pages skipped: {len(content_fingerprints)}
-- Robots.txt entries cached: {len(robots_cache)}
-""")
-            last_save_time = current_time
-
-def format_common_words(words):
-    return '\n'.join(f"  {word}: {count}" for word, count in words)
-
-def format_subdomains(subdomains):
-    return '\n'.join(f"  {domain}: {count} pages" for domain, count in subdomains)
 
 def scraper(url, resp):
     """
@@ -279,129 +239,117 @@ def extract_next_links(url, resp):
         print(f"Error processing {url}: {str(e)}")
         return []
 
+def save_stats_if_needed():
+    """
+    Saves statistics to file if enough time has passed since last save
+    """
+    global last_save_time
+    current_time = time.time()
+    
+    if current_time - last_save_time >= SAVE_INTERVAL:
+        stats = get_analytics()
+        with open('crawler_analytics.txt', 'w') as f:
+            f.write(f"""Web Crawler Analytics Report
+Time: {time.strftime('%Y-%m-%d %H:%M:%S')}
+
+1. Unique Pages: {stats['unique_pages']}
+(URL uniqueness determined by ignoring fragments)
+
+2. Longest Page: 
+URL: {stats['longest_page'][0]}
+Word Count: {stats['longest_page'][1]} words
+(HTML markup not counted)
+
+3. Top 50 Most Common Words:
+(Excluding stopwords)
+{format_word_frequencies(stats['most_common_words'][:50])}
+
+4. ICS Subdomains:
+(Sorted alphabetically with unique page counts)
+{format_subdomains(stats['subdomains'])}
+
+Additional Statistics:
+- Total URLs Found: {total_urls_found}
+- Total URLs Crawled: {total_urls_crawled}
+- Domains Crawled: {len(urls_per_domain)}
+""")
+            last_save_time = current_time
+
+def format_word_frequencies(words):
+    """Format word frequencies list"""
+    return '\n'.join(f"{i+1}. {word}: {count}" 
+                    for i, (word, count) in enumerate(words))
+
+def format_subdomains(subdomains):
+    """Format subdomains list with full URLs"""
+    return '\n'.join(f"{url}, {count}" 
+                    for url, count in subdomains.items())
+
 def process_content(url, text):
     """
     Analyzes page content for statistics tracking.
     """
     global total_urls_crawled
-    
+    print("Processing Content: "+ url)
     # Clean and normalize text
     text = ' '.join(text.split())
     
     # Adjust minimum content length for different types of pages
     parsed = urlparse(url)
-    min_words = 20 if '~' in parsed.path else 50  # Lower threshold for personal pages
-    
-    # Skip if page has too little content
-    if len(text.split()) < min_words:
-        return
     
     # Process words
     words = text.lower().split()
     
     # Update word frequencies (excluding stopwords)
-    with stats_lock:  # 使用锁保护全局计数器
-        for word in words:
-            if len(word) > 2 and not is_stopword(word):  # 使用stopwords过滤
-                word_frequencies[word] += 1
+    for word in words:
+        if len(word) > 2 and not is_stopword(word):
+            word_frequencies[word] += 1
     
     # Track page length (including stopwords for total length)
     page_word_counts[url] = len(words)
-    
-    # Track subdomains for ics.uci.edu
-    if 'ics.uci.edu' in parsed.netloc:
-        with stats_lock:
-            subdomain_counts[parsed.netloc] += 1
-    
+
     # Track unique URLs
-    with stats_lock:
-        unique_page_count.add(url)
-        total_urls_crawled += 1
-        urls_per_domain[parsed.netloc] += 1
-    
-    # Save stats periodically
-    save_stats_if_needed()
+    unique_page_count.add(url)
+    total_urls_crawled += 1
+    urls_per_domain[parsed.netloc] += 1
 
-def is_valid(url):
-    """
-    Determines if a URL should be crawled.
-    """
-    try:
-        parsed = urlparse(url)
-        
-        # Check scheme
-        if parsed.scheme not in {'http', 'https'}:
-            return False
-            
-        # Strict domain checking
-        allowed_domains = {
-            'ics.uci.edu', 'cs.uci.edu',
-            'informatics.uci.edu', 'stat.uci.edu'
-        }
-        
-        domain = parsed.netloc.lower()
-        if not any(domain.endswith(d) for d in allowed_domains):
-            return False
-            
-        # File type filtering
-        invalid_extensions = {
-            # Documents
-            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf',
-            'odt', 'ods', 'odp', 'tex', 'ps', 'eps',
-            # Images
-            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp',
-            # Audio/Video
-            'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm',
-            # Archives
-            'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz',
-            # Web assets
-            'css', 'js', 'json', 'xml', 'rss', 'atom',
-            # Other
-            'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'apk',
-            'swf', 'woff', 'woff2', 'eot', 'ttf'
-        }
-        
-        # Check file extension
-        path = parsed.path.lower()
-        if '.' in path:
-            ext = path.split('.')[-1]
-            if ext in invalid_extensions:
-                return False
-                
-        # Avoid calendar traps
-        if re.search(r'/calendar/|/events?/|/archive/', path):
-            return False
-            
-        # Avoid specific problematic paths
-        if any(x in path for x in ['/login', '/logout', '/search', '/print/', '/download/']):
-            return False
-            
-        # Avoid URLs that are too long
-        if len(url) > 200:
-            return False
-            
-        return True
-
-    except Exception as e:
-        print(f"Error validating {url}: {e}")
-        return False
-
-def is_stopword(word):
-    """
-    Check if a word is a stopword
-    """
-    return word.lower() in STOPWORDS
 
 def get_analytics():
     """
-    Returns current analytics data.
+    Get current analytics data
     """
+    # Get unique pages (ignoring fragments)
+    unique_urls = set()
+    for url in unique_page_count:
+        base_url = url.split('#')[0]  # Remove fragments
+        unique_urls.add(base_url)
+    
+    # Find longest page
+    longest_page = ('', 0)
+    for url, count in page_word_counts.items():
+        if count > longest_page[1]:
+            longest_page = (url, count)
+    
+    # Get most common words (excluding stopwords)
+    word_list = [(word, count) for word, count in word_frequencies.items()]
+    word_list.sort(key=lambda x: x[1], reverse=True)
+    
+    # Get subdomains for ics.uci.edu with full URLs
+    ics_subdomains = defaultdict(int)
+    for url in unique_urls:
+        parsed = urlparse(url)
+        if 'ics.uci.edu' in parsed.netloc:
+            # Construct base URL with scheme
+            subdomain_url = f"{parsed.scheme}://{parsed.netloc}"
+            ics_subdomains[subdomain_url] += 1
+    
     return {
-        'unique_pages': len(unique_page_count),
-        'longest_page': max(page_word_counts.items(), key=lambda x: x[1]) if page_word_counts else None,
-        'most_common_words': sorted(word_frequencies.items(), key=lambda x: x[1], reverse=True)[:50],
-        'subdomains': dict(subdomain_counts)
+        'unique_pages': len(unique_urls),
+        'longest_page': longest_page,
+        'most_common_words': word_list,
+        'subdomains': dict(sorted(ics_subdomains.items()))  # Sort alphabetically
     }
+
 
 def is_trap(url):
     """
@@ -507,3 +455,74 @@ def is_allowed_by_robots(url):
         # In case of any error, assume allowed
         return True
 
+
+
+def is_valid(url):
+    """
+    Determines if a URL should be crawled.
+    """
+    try:
+        parsed = urlparse(url)
+        
+        # Check scheme
+        if parsed.scheme not in {'http', 'https'}:
+            return False
+            
+        # Strict domain checking
+        allowed_domains = {
+            'ics.uci.edu', 'cs.uci.edu',
+            'informatics.uci.edu', 'stat.uci.edu'
+        }
+        
+        domain = parsed.netloc.lower()
+        if not any(domain.endswith(d) for d in allowed_domains):
+            return False
+            
+        # File type filtering
+        invalid_extensions = {
+            # Documents
+            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf',
+            'odt', 'ods', 'odp', 'tex', 'ps', 'eps',
+            # Images
+            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp',
+            # Audio/Video
+            'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm',
+            # Archives
+            'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz',
+            # Web assets
+            'css', 'js', 'json', 'xml', 'rss', 'atom',
+            # Other
+            'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'apk',
+            'swf', 'woff', 'woff2', 'eot', 'ttf'
+        }
+        
+        # Check file extension
+        path = parsed.path.lower()
+        if '.' in path:
+            ext = path.split('.')[-1]
+            if ext in invalid_extensions:
+                return False
+                
+        # Avoid calendar traps
+        if re.search(r'/calendar/|/events?/|/archive/', path):
+            return False
+            
+        # Avoid specific problematic paths
+        if any(x in path for x in ['/login', '/logout', '/search', '/print/', '/download/']):
+            return False
+            
+        # Avoid URLs that are too long
+        if len(url) > 200:
+            return False
+            
+        return True
+
+    except Exception as e:
+        print(f"Error validating {url}: {e}")
+        return False
+
+def is_stopword(word):
+    """
+    Check if a word is a stopword
+    """
+    return word.lower() in STOPWORDS
