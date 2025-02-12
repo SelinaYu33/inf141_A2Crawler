@@ -14,11 +14,10 @@ class Frontier:
         
         # Thread safety
         self._lock = RLock()
-        self._domain_locks = defaultdict(RLock)
         
-        # Domain queues and timing
-        self.domain_queues = defaultdict(list)
-        self.domain_last_access = defaultdict(float)
+        # Track queues and timing for main domains (e.g., ics.uci.edu, cs.uci.edu)
+        self.main_domain_queues = defaultdict(list)  # URLs for each main domain
+        self.main_domain_last_access = defaultdict(float)  # Last access time for each main domain
         
         # Global tracking
         self.in_progress = set()
@@ -45,28 +44,42 @@ class Frontier:
                 for url in self.config.seed_urls:
                     self.add_url(url)
 
+    def get_main_domain(self, url):
+        """
+        Extract main domain from URL
+        e.g., www.ics.uci.edu -> ics.uci.edu
+        """
+        parsed = urlparse(url)
+        domain_parts = parsed.netloc.split('.')
+        # Handle domains like ics.uci.edu, cs.uci.edu
+        if len(domain_parts) >= 3:
+            return '.'.join(domain_parts[-3:])
+        return parsed.netloc
+
     def get_tbd_url(self):
-        """Get next URL respecting politeness delay"""
+        """Get next URL respecting politeness delay at main domain level"""
         current_time = time.time()
         
         with self._lock:
-            for domain, urls in self.domain_queues.items():
+            # Check each main domain queue
+            for main_domain, urls in self.main_domain_queues.items():
                 if not urls:
                     continue
                     
-                with self._domain_locks[domain]:
-                    # Strict 500ms politeness delay
-                    time_since_last = current_time - self.domain_last_access[domain]
-                    if time_since_last < 0.5:
-                        continue
-                        
-                    # Get first non-in-progress URL
-                    for i, url in enumerate(urls):
-                        if url not in self.in_progress:
-                            urls.pop(i)
-                            self.in_progress.add(url)
-                            self.domain_last_access[domain] = current_time
-                            return url
+                # Enforce 500ms delay for main domain and all its subdomains
+                time_since_last = current_time - self.main_domain_last_access[main_domain]
+                if time_since_last < 0.5:  # Strict 500ms politeness delay
+                    continue
+                    
+                # Get first non-in-progress URL
+                for i, url in enumerate(urls):
+                    if url not in self.in_progress:
+                        urls.pop(i)
+                        self.in_progress.add(url)
+                        # Update last access time for the main domain
+                        self.main_domain_last_access[main_domain] = current_time
+                        self.logger.info(f"Assigning URL {url} from domain {main_domain} (waited {time_since_last:.2f}s)")
+                        return url
             
             return None
 
@@ -84,9 +97,9 @@ class Frontier:
             if urlhash not in self.save:
                 self.save[urlhash] = (url, False)
                 self.save.sync()
-                domain = urlparse(url).netloc
-                with self._domain_locks[domain]:
-                    self.domain_queues[domain].append(url)
+                # Add URL to its main domain queue
+                main_domain = self.get_main_domain(url)
+                self.main_domain_queues[main_domain].append(url)
 
     def mark_url_complete(self, url):
         """Mark URL as completed"""
@@ -105,9 +118,9 @@ class Frontier:
         with self._lock:
             for url, completed in self.save.values():
                 if not completed and is_valid(url):
-                    domain = urlparse(url).netloc
-                    with self._domain_locks[domain]:
-                        self.domain_queues[domain].append(url)
+                    # Add to appropriate main domain queue
+                    main_domain = self.get_main_domain(url)
+                    self.main_domain_queues[main_domain].append(url)
 
     def __del__(self):
         self.save.close()
