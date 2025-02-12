@@ -249,8 +249,12 @@ def process_content(url, text):
     # Clean and normalize text
     text = ' '.join(text.split())
     
+    # Adjust minimum content length for different types of pages
+    parsed = urlparse(url)
+    min_words = 20 if '~' in parsed.path else 50  # Lower threshold for personal pages
+    
     # Skip if page has too little content
-    if len(text) < 50:
+    if len(text.split()) < min_words:
         return
     
     # Process words
@@ -265,16 +269,15 @@ def process_content(url, text):
     page_word_counts[url] = len(words)
     
     # Track subdomains for ics.uci.edu
-    parsed_url = urlparse(url)
-    if 'ics.uci.edu' in parsed_url.netloc:
-        subdomain_counts[parsed_url.netloc] += 1
+    if 'ics.uci.edu' in parsed.netloc:
+        subdomain_counts[parsed.netloc] += 1
     
     # Track unique URLs
     unique_page_count.add(url)
     
     # Update counters
     total_urls_crawled += 1
-    urls_per_domain[parsed_url.netloc] += 1
+    urls_per_domain[parsed.netloc] += 1
     
     # Save stats periodically
     save_stats_if_needed()
@@ -410,13 +413,34 @@ def is_similar_content(text, url, threshold=0.1):
     """
     Check if content is too similar to previously seen pages using SimHash
     """
+    # Skip similarity check for faculty pages
+    parsed = urlparse(url)
+    if '~' in parsed.path:  # Faculty/staff personal pages
+        return False
+        
+    # Skip similarity check for important pages
+    important_paths = {
+        '/explore/', '/about/', '/faculty/', '/staff/',
+        '/research/', '/grad/', '/phd/', '/courses/',
+        '/people/', '/contact/', '/news/'
+    }
+    if any(path in parsed.path.lower() for path in important_paths):
+        return False
+    
+    # Only compare with pages from the same domain
+    domain = parsed.netloc
+    
     current_hash = SimHash(text)
+    similar_count = 0
     
     # Compare with existing fingerprints
     for stored_url, stored_hash in content_fingerprints:
-        if current_hash.distance(stored_hash) < threshold:
-            print(f"Similar content detected: {url} is similar to {stored_url}")
-            return True
+        if urlparse(stored_url).netloc == domain:  # Same domain comparison
+            if current_hash.distance(stored_hash) < threshold:
+                similar_count += 1
+                if similar_count >= 3:  # Require multiple similar pages
+                    print(f"Similar content detected: {url} is similar to {stored_url}")
+                    return True
     
     # Add current fingerprint to collection
     content_fingerprints.append((url, current_hash))

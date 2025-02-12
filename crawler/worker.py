@@ -16,6 +16,7 @@ class Worker(Thread):
         # basic check for requests in scraper
         assert {getsource(scraper).find(req) for req in {"from requests import", "import requests"}} == {-1}, "Do not use requests in scraper.py"
         assert {getsource(scraper).find(req) for req in {"from urllib.request import", "import urllib.request"}} == {-1}, "Do not use urllib.request in scraper.py"
+        self.sleep_time = config.time_delay / 4  # Shorter sleep time for better responsiveness
         super().__init__(daemon=True)
         
     def run(self):
@@ -26,10 +27,8 @@ class Worker(Thread):
                 url = self.frontier.get_tbd_url()
                 
                 if not url:
-                    # No URLs available, wait before retrying
-                    self.logger.info(
-                        f"Worker-{self.worker_id}: No URLs available. Waiting...")
-                    time.sleep(self.config.time_delay)
+                    # No URLs available, use shorter sleep time
+                    time.sleep(self.sleep_time)
                     continue
                 
                 # Download page
@@ -48,8 +47,13 @@ class Worker(Thread):
                 
                 # Extract and add new URLs
                 new_urls = scraper.scraper(url, resp)
-                for new_url in new_urls:
-                    self.frontier.add_url(new_url)
+                
+                # Add new URLs in batches for better efficiency
+                batch_size = 50
+                for i in range(0, len(new_urls), batch_size):
+                    batch = new_urls[i:i + batch_size]
+                    for new_url in batch:
+                        self.frontier.add_url(new_url)
                 
                 # Mark current URL as completed
                 self.frontier.mark_url_complete(url)
