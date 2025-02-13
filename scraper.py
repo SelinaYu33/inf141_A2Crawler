@@ -551,15 +551,15 @@ def is_valid(url):
             'swf', 'woff', 'woff2', 'eot', 'ttf'
         }
         
-        # Check file extension
-        path = parsed.path.lower()
-        if '.' in path:
-            ext = path.split('.')[-1].lower()
-            if ext in invalid_extensions:
+        # Check if URL contains any invalid extensions
+
+        url_lower = url.lower()
+        for ext in invalid_extensions:
+            if f'.{ext}' in url_lower:
                 return False
-        
+            
         # Filter out resource directories
-        if any(x in path.lower() for x in [
+        if any(x in url_lower for x in [
             '/images/', '/img/', '/media/', 
             '/video/', '/audio/', '/download/',
             '/css/', '/js/', '/assets/', '/fonts/',
@@ -568,11 +568,11 @@ def is_valid(url):
             return False
                 
         # Avoid calendar and event traps
-        if re.search(r'/calendar/|/events?/|/archive/', path):
+        if re.search(r'/calendar/|/events?/|/archive/', url_lower):
             return False
             
         # Avoid specific problematic paths
-        if any(x in path for x in [
+        if any(x in url_lower for x in [
             '/login', '/logout', '/search', '/print/',
             '/feed', '/rss', '/atom', '/api/', '/ajax/',
             '/cgi-bin/', '/wp-admin/', '/wp-content/',
