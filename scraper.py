@@ -139,7 +139,7 @@ def scraper(url, resp):
     if resp.status not in (200, 301, 302, 303, 307, 308):
         return []
     
-    if resp.status in (200, 301, 302, 303, 307, 308):
+    if resp.status in (301, 302, 303, 307, 308):
         if resp.raw_response.headers['Location']:
             return [resp.raw_response.headers['Location']]
         else:
