@@ -1,12 +1,16 @@
+from configparser import ConfigParser
 import re
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 from collections import defaultdict
 import urllib.robotparser
-import math
 from threading import Lock
 import time
 import os
+
+from utils.config import Config
+from utils.download import download
+from utils.server_registration import get_cache_server
 
 # Analytics tracking with thread safety
 stats_lock = Lock()
@@ -14,7 +18,7 @@ total_urls_found = 0
 total_urls_crawled = 0
 urls_per_domain = defaultdict(int)
 last_save_time = time.time()
-SAVE_INTERVAL = 300  # Save every 5 minutes
+SAVE_INTERVAL = 30  # Save every 30 seconds
 
 # Global statistics tracking
 word_frequencies = defaultdict(int)  # Track word frequencies
@@ -135,6 +139,12 @@ def scraper(url, resp):
     if resp.status not in (200, 301, 302, 303, 307, 308):
         return []
     
+    if resp.status in (200, 301, 302, 303, 307, 308):
+        if resp.raw_response.headers['Location']:
+            return [resp.raw_response.headers['Location']]
+        else:
+            return []
+        
     try:
         # Parse with BeautifulSoup
         soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
@@ -475,7 +485,7 @@ def is_similar_content(text, url, threshold=0.1):
 
 def is_allowed_by_robots(url):
     """
-    Checks if URL is allowed by robots.txt
+    Checks if URL is allowed by robots.txt using cache server
     """
     try:
         parsed = urlparse(url)
@@ -484,18 +494,22 @@ def is_allowed_by_robots(url):
         # Check cache first
         if base_url not in robots_cache:
             rp = urllib.robotparser.RobotFileParser()
-            rp.set_url(f"{base_url}/robots.txt")
-            try:
-                rp.read()
+            robots_url = f"{base_url}/robots.txt"
+            
+            # Use cache server to download robots.txt
+            config = Config(ConfigParser())
+            config.cache_server = get_cache_server(config, False)
+            robots_resp = download(robots_url, config)
+            if robots_resp.status == 200 and robots_resp.raw_response:
+                rp.parse(robots_resp.raw_response.content.decode('utf-8').splitlines())
                 robots_cache[base_url] = rp
-            except:
-                # If robots.txt can't be read, assume allowed
+            else:
                 return True
         
         return robots_cache[base_url].can_fetch("*", url)
         
-    except:
-        # In case of any error, assume allowed
+    except Exception as e:
+        print(f"Error checking robots.txt for {url}: {e}")
         return True
 
 
@@ -506,6 +520,11 @@ def is_valid(url):
     Only allows *.ics.uci.edu/*, *.cs.uci.edu/*, *.informatics.uci.edu/*, *.stat.uci.edu/*
     """
     try:
+
+        url = url.strip()
+        url = ' '.join(url.split())
+        url = url.replace(' ', '')
+
         parsed = urlparse(url)
         
         # Check scheme
@@ -538,28 +557,28 @@ def is_valid(url):
             'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf',
             'odt', 'ods', 'odp', 'tex', 'ps', 'eps', 'ppsx',
             # Images
-            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp', 'heic', 'heif', 'hevc', 'avif',
+            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp', 'heic', 'heif', 'hevc', 'avif', 'img',
             # Audio/Video
             'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm',
             'mpg', 'mpeg', 'm4v', '3gp', 'ogg', 'ogv', 'MPG', 
             # Archives
             'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz', 'deb', 'rpm', 'msi', 'dmg', 'iso', 'bin', 'apk',
             # Web assets
-            'css', 'js', 'json', 'xml', 'rss', 'atom', 'php', 'war',
+            'css', 'js', 'json', 'xml', 'rss', 'atom', 'php', 'war', 
             # Other
             'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'apk',
             'swf', 'woff', 'woff2', 'eot', 'ttf'
         }
         
         # Check if URL contains any invalid extensions
-
         url_lower = url.lower()
         for ext in invalid_extensions:
             if f'.{ext}' in url_lower:
                 return False
-            
+        
+        path = parsed.path.lower()
         # Filter out resource directories
-        if any(x in url_lower for x in [
+        if any(x in path.lower() for x in [
             '/images/', '/img/', '/media/', 
             '/video/', '/audio/', '/download/',
             '/css/', '/js/', '/assets/', '/fonts/',
@@ -568,11 +587,11 @@ def is_valid(url):
             return False
                 
         # Avoid calendar and event traps
-        if re.search(r'/calendar/|/events?/|/archive/', url_lower):
+        if re.search(r'/calendar/|/events?/|/archive/', path):
             return False
             
         # Avoid specific problematic paths
-        if any(x in url_lower for x in [
+        if any(x in path for x in [
             '/login', '/logout', '/search', '/print/',
             '/feed', '/rss', '/atom', '/api/', '/ajax/',
             '/cgi-bin/', '/wp-admin/', '/wp-content/',
