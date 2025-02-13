@@ -287,7 +287,11 @@ Additional Statistics:
 - Total URLs Crawled: {total_urls_crawled}
 - Domains Crawled: {len(urls_per_domain)}
 """)
-            last_save_time = current_time
+            
+        with open('longest_page.txt', 'a') as f:
+            f.write(f"Longest Page: {stats['longest_page'][0]} ({stats['longest_page'][1]} words)\n")
+
+        last_save_time = current_time
 
 def format_word_frequencies(word_freq_list):
     """
