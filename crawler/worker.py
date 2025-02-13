@@ -39,9 +39,14 @@ class Worker(Thread):
                 
                 # Extract and add new URLs
                 new_urls = scraper.scraper(url, resp)
-                # self.logger.info(f"Found {len(new_urls)} new URLs from {url}")
                 
+                # Filter URLs by robots.txt here instead
+                filtered_urls = []
                 for new_url in new_urls:
+                    if scraper.is_allowed_by_robots(new_url, self.config):
+                        filtered_urls.append(new_url)
+                        
+                for new_url in filtered_urls:
                     self.frontier.add_url(new_url)
                     
                 # Mark current URL complete

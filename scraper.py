@@ -180,8 +180,8 @@ def scraper(url, resp):
                 except:
                     continue
         
-        # Check robots.txt before returning links
-        return [link for link in links if is_valid(link) and is_allowed_by_robots(link, resp.config)]
+        # Pass config from worker
+        return [link for link in links if is_valid(link)]  # Remove robots.txt check for now
         
     except Exception as e:
         print(f"Error processing {url}: {str(e)}")
