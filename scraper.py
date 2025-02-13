@@ -492,19 +492,22 @@ def is_allowed_by_robots(url, config):
         base_url = f"{parsed.scheme}://{parsed.netloc}"
         
         # Check cache first
-        if base_url not in robots_cache:
-            rp = urllib.robotparser.RobotFileParser()
-            robots_url = f"{base_url}/robots.txt"
+        if base_url in robots_cache:
+            return robots_cache[base_url].can_fetch("*", url)
             
-            # Use provided config
-            robots_resp = download(robots_url, config)
-            if robots_resp.status == 200 and robots_resp.raw_response:
-                rp.parse(robots_resp.raw_response.content.decode('utf-8').splitlines())
-                robots_cache[base_url] = rp
-            else:
-                return True
+        # Only fetch robots.txt if not in cache
+        rp = urllib.robotparser.RobotFileParser()
+        robots_url = f"{base_url}/robots.txt"
         
-        return robots_cache[base_url].can_fetch("*", url)
+        # Use provided config
+        robots_resp = download(robots_url, config)
+        if robots_resp.status == 200 and robots_resp.raw_response:
+            rp.parse(robots_resp.raw_response.content.decode('utf-8').splitlines())
+            robots_cache[base_url] = rp
+            return rp.can_fetch("*", url)
+        
+        # If robots.txt not found, allow access
+        return True
         
     except Exception as e:
         print(f"Error checking robots.txt for {url}: {e}")
