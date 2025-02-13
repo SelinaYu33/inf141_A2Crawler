@@ -545,7 +545,7 @@ def is_valid(url):
             # Archives
             'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz', 'deb', 'rpm', 'msi', 'dmg', 'iso', 'bin', 'apk',
             # Web assets
-            'css', 'js', 'json', 'xml', 'rss', 'atom', 'php',
+            'css', 'js', 'json', 'xml', 'rss', 'atom', 'php', 'war',
             # Other
             'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'apk',
             'swf', 'woff', 'woff2', 'eot', 'ttf'
