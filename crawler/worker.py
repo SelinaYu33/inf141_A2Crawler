@@ -38,7 +38,9 @@ class Worker(Thread):
                 self.logger.info(f"Downloaded {url}, status <{resp.status}>")
                 
                 # Extract and add new URLs
-                new_urls = scraper(url, resp)
+                new_urls = scraper.scraper(url, resp)
+                # self.logger.info(f"Found {len(new_urls)} new URLs from {url}")
+                
                 for new_url in new_urls:
                     self.frontier.add_url(new_url)
                     
