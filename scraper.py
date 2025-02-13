@@ -555,8 +555,7 @@ def is_valid(url):
         # File extension filtering
         invalid_extensions = {
             # Documents
-            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf', 'odc'
-            'odt', 'ods', 'odp', 'tex', 'ps', 'eps', 'ppsx',
+            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf', 'odc', 'odt', 'ods', 'odp', 'tex', 'ps', 'eps',
             # Images
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp', 'heic', 'heif', 'hevc', 'avif', 'img',
             # Audio/Video
