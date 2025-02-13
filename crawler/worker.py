@@ -45,7 +45,8 @@ class Worker(Thread):
                 for new_url in new_urls:
                     if scraper.is_allowed_by_robots(new_url, self.config):
                         filtered_urls.append(new_url)
-                        
+                    else:
+                        self.logger.info(f"Blocked {new_url} by robots.txt")
                 for new_url in filtered_urls:
                     self.frontier.add_url(new_url)
                     
