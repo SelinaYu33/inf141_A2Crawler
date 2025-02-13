@@ -181,7 +181,7 @@ def scraper(url, resp):
                     continue
         
         # Check robots.txt before returning links
-        return [link for link in links if is_valid(link) and is_allowed_by_robots(link)]
+        return [link for link in links if is_valid(link) and is_allowed_by_robots(link, resp.config)]
         
     except Exception as e:
         print(f"Error processing {url}: {str(e)}")
@@ -483,7 +483,7 @@ def is_similar_content(text, url, threshold=0.1):
     
     return False
 
-def is_allowed_by_robots(url):
+def is_allowed_by_robots(url, config):
     """
     Checks if URL is allowed by robots.txt using cache server
     """
@@ -496,9 +496,7 @@ def is_allowed_by_robots(url):
             rp = urllib.robotparser.RobotFileParser()
             robots_url = f"{base_url}/robots.txt"
             
-            # Use cache server to download robots.txt
-            config = Config(ConfigParser())
-            config.cache_server = get_cache_server(config, False)
+            # Use provided config
             robots_resp = download(robots_url, config)
             if robots_resp.status == 200 and robots_resp.raw_response:
                 rp.parse(robots_resp.raw_response.content.decode('utf-8').splitlines())
