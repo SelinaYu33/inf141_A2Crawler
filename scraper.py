@@ -522,7 +522,7 @@ def is_valid(url):
         # File extension filtering
         invalid_extensions = {
             # Documents
-            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'ppsx', 'xls', 'xlsx', 
+            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'ppsx', 'xls', 'xlsx', '.csv',
             'txt', 'rtf', 'odc', 'odt', 'ods', 'odp', 'tex', 'ps', 'eps', 'cls', 'bib',
             # Images
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp', 'heic', 'heif', 'hevc', 'avif', 'img',
@@ -535,7 +535,7 @@ def is_valid(url):
             'css', 'js', 'json', 'xml', 'rss', 'atom', 'php', 'war', '.tgz',
             # Other
             'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'swf', 'woff', 'woff2', 'eot', 'ttf', 'fig', 'ss', 'scm',
-            'rkt', 'py', 'data', 'java', 'pov', 'hqx', 'lif', 'asp', 'lca', 'pq', 'hash', 'shar', 'cp', 'ma'
+            'rkt', 'py', 'data', 'java', 'pov', 'hqx', 'lif', 'asp', 'lca', 'pq', 'hash', 'shar', 'cp', 'ma', 'tif'
         }
         
         # Check if URL contains any invalid extensions
