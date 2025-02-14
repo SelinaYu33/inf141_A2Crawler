@@ -156,7 +156,7 @@ def extract_next_links(url, resp):
         if resp.raw_response.headers['Location']:
             return [resp.raw_response.headers['Location']]
         else:
-            return []    
+            return []
     try:
         # Parse with BeautifulSoup for better HTML handling
         soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
@@ -522,7 +522,7 @@ def is_valid(url):
         # File extension filtering
         invalid_extensions = {
             # Documents
-            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'ppsx', 'xls', 'xlsx', '.csv',
+            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'ppsx', 'xls', 'xlsx', 'csv',
             'txt', 'rtf', 'odc', 'odt', 'ods', 'odp', 'tex', 'ps', 'eps', 'cls', 'bib',
             # Images
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp', 'heic', 'heif', 'hevc', 'avif', 'img',
@@ -530,14 +530,15 @@ def is_valid(url):
             'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm',
             'mpg', 'mpeg', 'm4v', '3gp', 'ogg', 'ogv',
             # Archives
-            'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz', 'deb', 'rpm', 'msi', 'dmg', 'iso', 'bin', 'apk',
+            'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz', 'deb', 'rpm', 'msi', 'apk',
             # Web assets
-            'css', 'js', 'json', 'xml', 'rss', 'atom', 'php', 'war', '.tgz',
+            'css', 'js', 'json', 'xml', 'rss', 'atom', 'php', 'war', 'tgz',
             # Other
-            'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'swf', 'woff', 'woff2', 'eot', 'ttf', 'fig', 'ss', 'scm',
-            'rkt', 'py', 'data', 'java', 'pov', 'hqx', 'lif', 'asp', 'lca', 'pq', 'hash', 'shar', 'cp', 'ma', 'tif'
+            'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'swf', 'woff', 'woff2', 'eot', 'ttf', 'fig', 'ss',
+            'rkt', 'py', 'data', 'java', 'hqx', 'lif', 'asp', 'lca', 'pq', 'hash', 'shar', 'cp', 'ma', 'tif', 'db',
+            'cpp', 'diff', 'dtd', 'emx', 'ff', 'grm', 'in', 'io', 'lsp', 'mat', 'nb', 'pov', 'pps', 'rle', 'rls', 'sas',
+            'scm', 'sh', 'sql', 'uai', 
         }
-        
         # Check if URL contains any invalid extensions
         url_lower = url.lower()
         for ext in invalid_extensions:
