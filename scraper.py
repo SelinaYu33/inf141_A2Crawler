@@ -159,10 +159,12 @@ def scraper(url, resp):
         # Check for traps and similar content
         if is_trap(url) or is_similar_content(text, url):
             return []
-        
-        # Process page content for analytics
-        process_content(url, text)
-        
+
+        if is_valid(url):
+            # Process page content for analytics
+            process_content(url, text)
+        else:
+            return []
         # Extract links
         links = []
         for a_tag in soup.find_all('a', href=True):
@@ -559,7 +561,8 @@ def is_valid(url):
         # File extension filtering
         invalid_extensions = {
             # Documents
-            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf', 'odc', 'odt', 'ods', 'odp', 'tex', 'ps', 'eps',
+            'pdf', 'doc', 'docx', 'ppt', 'pptx', 'ppsx', 'xls', 'xlsx', 
+            'txt', 'rtf', 'odc', 'odt', 'ods', 'odp', 'tex', 'ps', 'eps',
             # Images
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp', 'heic', 'heif', 'hevc', 'avif', 'img',
             # Audio/Video
