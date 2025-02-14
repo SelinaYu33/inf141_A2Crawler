@@ -133,8 +133,7 @@ def scraper(url, resp):
             return []
         visited_urls.add(clean_url)
         links = extract_next_links(url, resp)
-        # Pass config from worker
-        return [link for link in links if is_valid(link)]  # Remove robots.txt check for now
+        return [link for link in links if is_valid(link) and not is_trap(link)] 
         
     except Exception as e:
         print(f"Error processing {url}: {str(e)}")
@@ -185,9 +184,10 @@ def extract_next_links(url, resp):
             print(f"Detected trap or similar content: {url}")
             return []
         
-        # Process page content for analytics
-        process_content(url, text)
-        
+        if is_valid(url):
+            # Process page content for analytics
+            process_content(url, text)
+            
         # Extract links
         links = []
         for a_tag in soup.find_all('a', href=True):
@@ -368,14 +368,19 @@ def is_trap(url):
     if any([
         # Existing checks
         len(re.findall(r'\d+', path)) > 4,
-        path.count('/') > 6,
+        # Check if the pattern has occurred more than 50 times
         url_patterns[pattern] > 50,
+        # Check if the path contains a year and month and day
         re.search(r'/\d{4}/\d{2}/\d{2}/', path),
+        # Check if the path contains a year and month
+        re.search(r'/\d{4}/\d{2}/', path),
+        # Check if the path has less than 3 subdomains
         len(set(path.split('/'))) < path.count('/') - 2,
+        # Check if the query is longer than 100 characters
         len(parsed.query) > 100,
+        # Check if the query has more than 5 ampersands
         parsed.query.count('&') > 5,
         
-        # Additional checks
         # Wiki-related traps
         re.search(r'(timeline|history|revisions|diff|changes)', path),
         re.search(r'\?do=(index|revisions|diff|backlink)', query),
@@ -518,19 +523,19 @@ def is_valid(url):
         invalid_extensions = {
             # Documents
             'pdf', 'doc', 'docx', 'ppt', 'pptx', 'ppsx', 'xls', 'xlsx', 
-            'txt', 'rtf', 'odc', 'odt', 'ods', 'odp', 'tex', 'ps', 'eps',
+            'txt', 'rtf', 'odc', 'odt', 'ods', 'odp', 'tex', 'ps', 'eps', 'cls', 'bib',
             # Images
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'svg', 'webp', 'heic', 'heif', 'hevc', 'avif', 'img',
             # Audio/Video
             'mp3', 'mp4', 'wav', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm',
-            'mpg', 'mpeg', 'm4v', '3gp', 'ogg', 'ogv', 'MPG', 
+            'mpg', 'mpeg', 'm4v', '3gp', 'ogg', 'ogv',
             # Archives
             'zip', 'rar', 'gz', 'tar', '7z', 'bz2', 'xz', 'deb', 'rpm', 'msi', 'dmg', 'iso', 'bin', 'apk',
             # Web assets
-            'css', 'js', 'json', 'xml', 'rss', 'atom', 'php', 'war', 
+            'css', 'js', 'json', 'xml', 'rss', 'atom', 'php', 'war', '.tgz',
             # Other
-            'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'apk',
-            'swf', 'woff', 'woff2', 'eot', 'ttf'
+            'exe', 'dll', 'so', 'dmg', 'iso', 'bin', 'swf', 'woff', 'woff2', 'eot', 'ttf', 'fig', 'ss', 'scm',
+            'rkt', 'py', 'data', 'java', 'pov', 'hqx', 'lif', 'asp', 'lca', 'pq', 'hash', 'shar', 'cp', 'ma'
         }
         
         # Check if URL contains any invalid extensions
@@ -545,7 +550,7 @@ def is_valid(url):
             '/images/', '/img/', '/media/', 
             '/video/', '/audio/', '/download/',
             '/css/', '/js/', '/assets/', '/fonts/',
-            '/static/', '/uploads/', '/files/'
+            '/static/', '/uploads/', '/files/', '/bibs/', '/publications/', '/docs/', '/papers/', '/pdfs/'
         ]):
             return False
                 
@@ -557,7 +562,7 @@ def is_valid(url):
         if any(x in path for x in [
             '/login', '/logout', '/search', '/print/',
             '/feed', '/rss', '/atom', '/api/', '/ajax/',
-            '/cgi-bin/', '/wp-admin/', '/wp-content/',
+            '/cgi-bin/', '/wp-content/',
             '/admin/', '/backup/', '/raw/'
         ]):
             return False
