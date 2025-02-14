@@ -12,7 +12,7 @@ class Worker(Thread):
         self.worker_id = worker_id
         self.config = config
         self.frontier = frontier
-        self.logger = get_logger(f"Worker-{worker_id}")
+        self.logger = get_logger(f"Worker-{worker_id}", f"Worker")
         # basic check for requests in scraper
         assert {getsource(scraper).find(req) for req in {"from requests import", "import requests"}} == {-1}, "Do not use requests in scraper.py"
         assert {getsource(scraper).find(req) for req in {"from urllib.request import", "import urllib.request"}} == {-1}, "Do not use urllib.request in scraper.py"
@@ -25,17 +25,20 @@ class Worker(Thread):
                 # Get next URL
                 url = self.frontier.get_tbd_url()
                 if not url:
-                    time.sleep(0.1)  # Short sleep if no URLs
-                    continue
-                    
-                # Download page
-                resp = download(url, self.config)
-                if resp.status != 200:
-                    self.logger.error(f"Failed to download {url}, status <{resp.status}>")
+                    self.logger.info("Frontier is empty. Stopping Crawler.")
+                    break
+                
+                if not scraper.is_valid(url):
+                    self.logger.info(f"Invalid URL: {url}")
                     self.frontier.mark_url_complete(url)
                     continue
-                    
-                self.logger.info(f"Downloaded {url}, status <{resp.status}>")
+                
+                # Download page
+                resp = download(url, self.config, self.logger)
+                
+                self.logger.info(
+                    f"Downloaded {url}, status <{resp.status}>, "
+                    f"using cache {self.config.cache_server}.")
                 
                 # Extract and add new URLs
                 new_urls = scraper.scraper(url, resp)

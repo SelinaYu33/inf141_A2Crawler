@@ -127,61 +127,12 @@ def scraper(url, resp):
     Returns:
         List of valid URLs found on the page
     """
-    clean_url = url.split('#')[0]
-    if clean_url in visited_urls:
-        return []
-    visited_urls.add(clean_url)
-    
-    if not resp.raw_response:
-        return []
-    
-
-    if resp.status not in (200, 301, 302, 303, 307, 308):
-        return []
-    
-    if resp.status in (301, 302, 303, 307, 308):
-        if resp.raw_response.headers['Location']:
-            return [resp.raw_response.headers['Location']]
-        else:
-            return []
-        
     try:
-        # Parse with BeautifulSoup
-        soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
-        
-        # Remove script and style elements
-        for element in soup(['script', 'style', 'meta', 'link']):
-            element.decompose()
-            
-        # Extract text content
-        text = soup.get_text()
-        
-        # Check for traps and similar content
-        if is_trap(url) or is_similar_content(text, url):
+        clean_url = url.split('#')[0]
+        if clean_url in visited_urls:
             return []
-
-        if is_valid(url):
-            # Process page content for analytics
-            process_content(url, text)
-        else:
-            return []
-        # Extract links
-        links = []
-        for a_tag in soup.find_all('a', href=True):
-            href = a_tag['href'].strip()
-            if href and not href.startswith(('javascript:', 'mailto:', 'tel:')):
-                try:
-                    # Convert relative URLs to absolute
-                    absolute_url = urljoin(url, href)
-                    # Remove fragments
-                    clean_url = absolute_url.split('#')[0]
-                    # Ensure URL is ASCII-only
-                    clean_url = clean_url.encode('ascii', errors='ignore').decode()
-                    if clean_url:
-                        links.append(clean_url)
-                except:
-                    continue
-        
+        visited_urls.add(clean_url)
+        links = extract_next_links(url, resp)
         # Pass config from worker
         return [link for link in links if is_valid(link)]  # Remove robots.txt check for now
         
@@ -193,6 +144,7 @@ def extract_next_links(url, resp):
     """
     Processes page content and extracts links.
     """
+    # Check if the response is empty
     if not resp.raw_response:
         return []
     
@@ -200,6 +152,12 @@ def extract_next_links(url, resp):
     if resp.status not in (200, 301, 302, 303, 307, 308):
         return []
     
+    # Handle redirects
+    if resp.status in (301, 302, 303, 307, 308):
+        if resp.raw_response.headers['Location']:
+            return [resp.raw_response.headers['Location']]
+        else:
+            return []    
     try:
         # Parse with BeautifulSoup for better HTML handling
         soup = BeautifulSoup(resp.raw_response.content, 'html.parser')
@@ -227,10 +185,8 @@ def extract_next_links(url, resp):
             print(f"Detected trap or similar content: {url}")
             return []
         
-        # Process page content for analytics with thread safety
-        with stats_lock:
-            process_content(url, text)
-            save_stats_if_needed()
+        # Process page content for analytics
+        process_content(url, text)
         
         # Extract links
         links = []

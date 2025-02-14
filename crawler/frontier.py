@@ -116,11 +116,14 @@ class Frontier:
     def _parse_save_file(self):
         """Load URLs from save file"""
         with self._lock:
+            total_count = len(self.save)
+            tbd_count = 0
             for url, completed in self.save.values():
                 if not completed and is_valid(url):
                     # Add to appropriate main domain queue
                     main_domain = self.get_main_domain(url)
                     self.main_domain_queues[main_domain].append(url)
-
+                    tbd_count+=1
+            self.logger.info(f"Found {tbd_count} urls to be downloaded from {total_count} total urls discovered.")
     def __del__(self):
         self.save.close()
