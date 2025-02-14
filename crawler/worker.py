@@ -25,8 +25,8 @@ class Worker(Thread):
                 # Get next URL
                 url = self.frontier.get_tbd_url()
                 if not url:
-                    self.logger.info("Frontier is empty. Stopping Crawler.")
-                    break
+                    time.sleep(0.1)  # Short sleep if no URLs
+                    continue
                 
                 if not scraper.is_valid(url):
                     self.logger.info(f"Invalid URL: {url}")
