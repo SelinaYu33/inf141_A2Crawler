@@ -28,8 +28,8 @@ class Worker(Thread):
                     time.sleep(0.1)  # Short sleep if no URLs
                     continue
                 
-                if not scraper.is_valid(url):
-                    self.logger.info(f"Invalid URL: {url}")
+                if not scraper.is_valid(url) or scraper.is_trap(url) or not scraper.is_allowed_by_robots(url, self.config):
+                    self.logger.info(f"Invalid URL or trap URL or not allowed by robots.txt: {url}")
                     self.frontier.mark_url_complete(url)
                     continue
                 
@@ -43,13 +43,12 @@ class Worker(Thread):
                 # Extract and add new URLs
                 new_urls = scraper.scraper(url, resp)
                 
-                # Filter URLs by robots.txt here instead
+                # Filter URLs by robots.txt and valid urls and traps
                 filtered_urls = []
                 for new_url in new_urls:
-                    if scraper.is_allowed_by_robots(new_url, self.config):
+                    if scraper.is_allowed_by_robots(new_url, self.config) and not scraper.is_trap(new_url) and scraper.is_valid(new_url):
                         filtered_urls.append(new_url)
-                    # else:
-                    #     self.logger.info(f"Blocked {new_url} by robots.txt")
+                
                 for new_url in filtered_urls:
                     self.frontier.add_url(new_url)
                     
