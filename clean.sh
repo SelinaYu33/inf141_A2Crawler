@@ -10,7 +10,7 @@ echo "All Python processes killed."
 
 # 删除日志和数据文件
 echo "Removing logs and output files..."
-rm -f crawler_analytics.txt longest_page.txt output.log
+rm -f crawler_analytics.txt longest_page.txt output.log frontier.shelve
 
 # 删除 Logs 目录中的所有日志文件
 rm -f Logs/*
