@@ -357,7 +357,10 @@ def is_trap(url):
     parsed = urlparse(url)
     path = parsed.path.lower()
     query = parsed.query.lower()
-
+    
+    if 'wiki' in path and "version" in query:
+        return True
+    
     # Skip important paths that shouldn't be considered traps
     important_paths = {
         '/seminars/', '/people/', '/faculty/', '/staff/',
@@ -369,8 +372,7 @@ def is_trap(url):
     }
     if any(path.startswith(p) for p in important_paths):
         return False
-    if 'wiki' in path and "version" in query:
-        return True
+
     # Skip root paths
     if path in ['/', '', '/index.html', '/index.htm']:
         return False
