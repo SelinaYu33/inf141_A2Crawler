@@ -357,44 +357,47 @@ def is_trap(url):
     parsed = urlparse(url)
     path = parsed.path.lower()
     query = parsed.query.lower()
-    
-    # Extract pattern by replacing numbers with *
-    pattern = re.sub(r'\d+', '*', path)
-    
-    # Count pattern occurrences
-    url_patterns[pattern] += 1
-    
-    # Check for common trap patterns
+
+    # 1. Avoid false positives for root domains or static pages
+    if parsed.path.endswith(('.html', '.htm', '.php', '.asp', '.jsp')) and not re.search(r'/\d{4}/\d{2}/', path):
+        return False  # Skip static pages (without dynamic parameters)
+
+    # 2. Avoid false positives for root paths
+    if path in ['/', '', '/index.html', '/index.htm']:
+        return False  # Skip root directory
+
+    # 3. Check common trap patterns
     if any([
-        # Check if the pattern has occurred more than 100 times
-        url_patterns[pattern] > 100,
-        # Check if the path contains a year and month and day
+        # Date path traps
         re.search(r'/\d{4}/\d{2}/\d{2}/', path),
-        # Check if the path contains a year and month
         re.search(r'/\d{4}/\d{2}/', path),
-        # Check if the query is longer than 100 characters
+
+        # Long query parameters
         len(parsed.query) > 100,
-        # Check if the query has more than 5 ampersands
+
+        # Too many '&' parameters
         parsed.query.count('&') > 5,
-        
-        # Wiki-related traps
+
+        # Wiki related traps
         re.search(r'\?do=(index|revisions|diff|backlink)', query),
-        
-        # Timestamp-related traps
+
+        # Timestamp traps
         re.search(r'from=\d{4}-\d{2}-\d{2}', query),
         re.search(r'precision=(second|minute|hour)', query),
-        
-        # Dynamic parameter traps
+
+        # Pagination traps
         re.search(r'[?&](page|offset|start|limit)=\d+', url),
+
+        # Sorting and filtering traps
         re.search(r'[?&](sort|order|filter)=', url),
-        
-        # Duplicate parameter checks
+
+        # Duplicate key parameters
         len(re.findall(r'do=', query)) > 1,
         len(re.findall(r'from=', query)) > 1
     ]):
         print(f"Detected URL trap: {url}")
         return True
-        
+
     return False
 
 def is_similar_content(text, url, threshold=0.1):
