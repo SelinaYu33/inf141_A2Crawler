@@ -369,7 +369,8 @@ def is_trap(url):
     }
     if any(path.startswith(p) for p in important_paths):
         return False
-
+    if 'wiki' in path and "version" in query:
+        return True
     # Skip root paths
     if path in ['/', '', '/index.html', '/index.htm']:
         return False
@@ -560,7 +561,7 @@ def is_valid(url):
             '/login', '/logout', '/search', '/print/',
             '/feed', '/rss', '/atom', '/api/', '/ajax/',
             '/cgi-bin/', '/wp-content/',
-            '/admin/', '/backup/', '/raw/', '/wiki/'
+            '/admin/', '/backup/', '/raw/',
         ]):
             return False
             
