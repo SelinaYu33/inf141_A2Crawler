@@ -358,15 +358,27 @@ def is_trap(url):
     path = parsed.path.lower()
     query = parsed.query.lower()
 
-    # 1. Avoid false positives for root domains or static pages
-    if parsed.path.endswith(('.html', '.htm', '.php', '.asp', '.jsp')) and not re.search(r'/\d{4}/\d{2}/', path):
-        return False  # Skip static pages (without dynamic parameters)
+    # Skip important paths that shouldn't be considered traps
+    important_paths = {
+        '/seminars/', '/people/', '/faculty/', '/staff/',
+        '/research/', '/grad/', '/phd/', '/courses/',
+        '/news/', '/contact/', '/about/', '/explore/',
+        '/seminar-series/', '/chairs-message/', '/what-is-statistics/',
+        '/tutoring-resources/', '/m-s-ph-d-in-statistics/',
+        '/grad-student-directory/', '/minor-in-statistics/'
+    }
+    if any(path.startswith(p) for p in important_paths):
+        return False
 
-    # 2. Avoid false positives for root paths
+    # Skip root paths
     if path in ['/', '', '/index.html', '/index.htm']:
-        return False  # Skip root directory
+        return False
 
-    # 3. Check common trap patterns
+    # Skip faculty/staff personal pages
+    if '~' in path:
+        return False
+
+    # Check actual trap patterns
     if any([
         # Date path traps
         re.search(r'/\d{4}/\d{2}/\d{2}/', path),
@@ -375,7 +387,7 @@ def is_trap(url):
         # Long query parameters
         len(parsed.query) > 100,
 
-        # Too many '&' parameters
+        # Too many query parameters
         parsed.query.count('&') > 5,
 
         # Wiki related traps
@@ -384,12 +396,6 @@ def is_trap(url):
         # Timestamp traps
         re.search(r'from=\d{4}-\d{2}-\d{2}', query),
         re.search(r'precision=(second|minute|hour)', query),
-
-        # Pagination traps
-        re.search(r'[?&](page|offset|start|limit)=\d+', url),
-
-        # Sorting and filtering traps
-        re.search(r'[?&](sort|order|filter)=', url),
 
         # Duplicate key parameters
         len(re.findall(r'do=', query)) > 1,
