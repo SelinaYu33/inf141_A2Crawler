@@ -366,16 +366,12 @@ def is_trap(url):
     
     # Check for common trap patterns
     if any([
-        # Existing checks
-        len(re.findall(r'\d+', path)) > 4,
         # Check if the pattern has occurred more than 50 times
         url_patterns[pattern] > 50,
         # Check if the path contains a year and month and day
         re.search(r'/\d{4}/\d{2}/\d{2}/', path),
         # Check if the path contains a year and month
         re.search(r'/\d{4}/\d{2}/', path),
-        # Check if the path has less than 3 subdomains
-        len(set(path.split('/'))) < path.count('/') - 2,
         # Check if the query is longer than 100 characters
         len(parsed.query) > 100,
         # Check if the query has more than 5 ampersands
