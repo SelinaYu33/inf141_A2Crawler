@@ -366,8 +366,8 @@ def is_trap(url):
     
     # Check for common trap patterns
     if any([
-        # Check if the pattern has occurred more than 50 times
-        url_patterns[pattern] > 50,
+        # Check if the pattern has occurred more than 100 times
+        url_patterns[pattern] > 100,
         # Check if the path contains a year and month and day
         re.search(r'/\d{4}/\d{2}/\d{2}/', path),
         # Check if the path contains a year and month
@@ -378,20 +378,11 @@ def is_trap(url):
         parsed.query.count('&') > 5,
         
         # Wiki-related traps
-        re.search(r'(timeline|history|revisions|diff|changes)', path),
         re.search(r'\?do=(index|revisions|diff|backlink)', query),
         
         # Timestamp-related traps
         re.search(r'from=\d{4}-\d{2}-\d{2}', query),
         re.search(r'precision=(second|minute|hour)', query),
-        
-        # File download traps
-        re.search(r'action=download', query),
-        re.search(r'\.(zip|rar|tar|gz)$', path),
-        
-        # Special directory traps
-        re.search(r'/(virus|malware|spam)/', path),
-        path.count('wiki') > 1,
         
         # Dynamic parameter traps
         re.search(r'[?&](page|offset|start|limit)=\d+', url),
