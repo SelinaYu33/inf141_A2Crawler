@@ -560,7 +560,7 @@ def is_valid(url):
             '/login', '/logout', '/search', '/print/',
             '/feed', '/rss', '/atom', '/api/', '/ajax/',
             '/cgi-bin/', '/wp-content/',
-            '/admin/', '/backup/', '/raw/'
+            '/admin/', '/backup/', '/raw/', '/wiki/'
         ]):
             return False
             
